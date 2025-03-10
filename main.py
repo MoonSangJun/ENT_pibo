@@ -1,5 +1,6 @@
 from login import sign_up, login
-import squat  # 스쿼트 모듈 (나중에 데드리프트, 벤치프레스 추가)
+import squat  
+#일단은 스쿼트만 나중에 더 추가해야할듯
 
 def main():
     while True:
@@ -32,11 +33,11 @@ def select_exercise(user_id):
 
         if choice == "1":
             print("스쿼트 감지 시작!")
-            squat.start_squat_tracking(user_id)  # 스쿼트 감지 실행
+            squat.start_squat_tracking(user_id)  #스쿼트 실행
         elif choice == "2":
-            print("데드리프트 감지 준비 중...")  # 나중에 추가할 부분
+            print("데드리프트 감지 준비 중...")  #나중에 추가할 부분
         elif choice == "3":
-            print("벤치프레스 감지 준비 중...")  # 나중에 추가할 부분
+            print("벤치프레스 감지 준비 중...")  #나중에 추가할 부분
         elif choice == "4":
             print("로그아웃되었습니다.")
             break
