@@ -1,7 +1,7 @@
 import firebase_admin
 from firebase_admin import credentials, auth, firestore
 
-cred = credentials.Certificate("/Users/moonsangjun/Desktop/캡스톤1/ENT_pibo/ent-pibo-firebase-adminsdk-fbsvc-07ff86926b.json")
+cred = credentials.Certificate("ent-pibo-firebase-adminsdk-fbsvc-07ff86926b.json")
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 
