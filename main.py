@@ -1,26 +1,49 @@
-from login import login
-
+import os
+import sys
+from login import sign_up, login
+import bench  # 벤치프레스 모듈
 
 def main():
-    print("ENT_Pibo 시작")
-    
-    #사용자 로그인
-    email = input("이메일 입력: ")
-    password = input("비밀번호 입력: ")
-    user_id = login(email, password)
-    
-    if user_id:
-        print(f"로그인 성공: {user_id}")
-        
-        # 자세 감지 실행
-        # exercise_type = "squat"
-        # accuracy = analyze_pose(exercise_type)
-        
-        # # 운동 데이터 업데이트
-        # update_ranking(user_id, exercise_type, accuracy)
+    while True:
+        print("\nENT_Pibo")
+        print("1. 회원가입")
+        print("2. 로그인")
+        print("3. 종료")
+        choice = input("번호를 입력하세요: ")
 
-        # # TTS로 피드백 제공
-        # speak("운동이 완료되었습니다! 랭킹을 확인하세요.")
+        if choice == "1":
+            sign_up()
+        elif choice == "2":
+            user_id = login()
+            if user_id:
+                select_exercise(user_id)
+        elif choice == "3":
+            print("프로그램을 종료합니다.")
+            break
+        else:
+            print("잘못된 입력입니다. 다시 선택하세요.")
+
+def select_exercise(user_id):
+    while True:
+        print("\n운동 선택")
+        print("1. 스쿼트")
+        print("2. 데드리프트")
+        print("3. 벤치프레스")
+        print("4. 로그아웃")
+        choice = input("운동 번호를 선택하세요: ")
+
+        if choice == "1":
+            print("스쿼트 감지 시작!")
+        elif choice == "2":
+            print("데드리프트 감지 준비 중... (추후 구현 예정)")
+        elif choice == "3":
+            print("벤치프레스 감지를 실행합니다...")
+            bench.start_bench_tracking(user_id)  # user_id 넘김
+        elif choice == "4":
+            print("로그아웃되었습니다.")
+            break
+        else:
+            print("잘못된 입력입니다. 다시 선택하세요.")
 
 if __name__ == "__main__":
     main()
