@@ -1,11 +1,7 @@
 import firebase_admin
 from firebase_admin import credentials, auth, firestore
+from firebase_config import db
 
-# Firebase 초기화
-cred = credentials.Certificate("/Users/moonsangjun/Desktop/캡스톤1/ENT_pibo/ent-pibo-firebase-adminsdk-fbsvc-07ff86926b.json")
-firebase_admin.initialize_app(cred)
-
-db = firestore.client()
 
 #회원가입 함수
 def sign_up():

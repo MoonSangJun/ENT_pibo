@@ -1,5 +1,5 @@
 from login import sign_up, login
-import squat  
+from squat import run_squat
 #일단은 스쿼트만 나중에 더 추가해야할듯
 
 def main():
@@ -33,7 +33,7 @@ def select_exercise(user_id):
 
         if choice == "1":
             print("스쿼트 감지 시작!")
-            squat.start_squat_tracking(user_id)  #스쿼트 실행
+            run_squat(user_id)  #스쿼트 실행
         elif choice == "2":
             print("데드리프트 감지 준비 중...")  #나중에 추가할 부분
         elif choice == "3":
