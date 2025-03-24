@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # OpenAI API 키 설정
-OPENAI_API_KEY = os.getenv("gpt")
+OPENAI_API_KEY = os.getenv("")
 
 # OpenAI 클라이언트 초기화 (v1.0.0 이상)
 client = openai.OpenAI(api_key=OPENAI_API_KEY)
