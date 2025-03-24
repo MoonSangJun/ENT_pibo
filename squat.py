@@ -1,138 +1,89 @@
 import cv2
 import mediapipe as mp
 import numpy as np
-import time
-import firebase_admin
-from firebase_admin import credentials, firestore
-from datetime import datetime  # 날짜 처리를 위한 모듈 추가
-
-# Firebase 초기화
-cred = credentials.Certificate("ent-pibo-firebase-adminsdk-fbsvc-07ff86926b.json")  # Firebase 키 파일 경로 변경
-firebase_admin.initialize_app(cred)
-db = firestore.client()
 
 mp_drawing = mp.solutions.drawing_utils
 mp_pose = mp.solutions.pose
 
-def calculate_angle(a, b, c):
-    a = np.array(a)  
-    b = np.array(b)  
-    c = np.array(c)  
+# 각도 계산 함수
+def findAngle(a, b, c, minVis=0.8):
+    if a.visibility > minVis and b.visibility > minVis and c.visibility > minVis:
+        bc = np.array([c.x - b.x, c.y - b.y, c.z - b.z])
+        ba = np.array([a.x - b.x, a.y - b.y, a.z - b.z])
+        angle = np.arccos(np.dot(ba, bc) / (np.linalg.norm(ba) * np.linalg.norm(bc))) * (180 / np.pi)
+        return 360 - angle if angle > 180 else angle
+    return -1
 
-    radians = np.arctan2(c[1] - b[1], c[0] - b[0]) - np.arctan2(a[1] - b[1], a[0] - b[0])
-    angle = np.abs(radians * 180.0 / np.pi)
-
-    if angle > 180.0:
-        angle = 360 - angle
-
-    return angle
-
-cap = cv2.VideoCapture(0)
-
-# Curl counter variables
-counter = 0  
-stage = None
-prev_stage = None  
-feedback = ""  
-stage_start_time = time.time()  
-
-exercise_type = "bench"  # 운동 종류를 bench, deadlift, squat 중 하나로 설정
-
-def update_firebase_count(user_id, exercise, count):
-    today_date = datetime.today().strftime('%Y-%m-%d')  # YYYY-MM-DD 형식 날짜 가져오기
-
-    doc_ref = db.collection("users").document(user_id).collection(exercise).document(today_date)
-    doc = doc_ref.get()
-    
-    if doc.exists:
-        current_count = doc.to_dict().get("reps", 0)
-        new_count = current_count + count
-        doc_ref.update({"reps": new_count})
+# 다리 상태 판별 함수
+def legState(angle):
+    if angle < 0:
+        return 0  # 감지 안 됨
+    elif angle < 105:
+        return 1  # 스쿼트 자세
+    elif angle < 150:
+        return 2  # 중간 상태
     else:
-        doc_ref.set({"reps": count})
+        return 3  # 직립 상태
 
-## Setup mediapipe instance
-with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
+# 스쿼트 감지 및 카운트 함수
+def start_squat_tracking(user_id):
+    cap = cv2.VideoCapture(0)
 
-        image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        image.flags.writeable = False
-        results = pose.process(image)
-        image.flags.writeable = True
-        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+    while cap.read()[1] is None:
+        print("Waiting for Video")
 
-        try:
-            landmarks = results.pose_landmarks.landmark
+    with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
+        repCount = 0
+        lastState = 9  # 초기 상태: 직립
 
-            shoulder = [landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].x,
-                        landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].y]
-            elbow = [landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].x,
-                     landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].y]
-            wrist = [landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].x,
-                     landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].y]
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                print("카메라 오류!")
+                break
 
-            angle = calculate_angle(shoulder, elbow, wrist)
+            frame = cv2.resize(frame, (1024, 600))
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            frame.flags.writeable = False
 
-            cv2.putText(image, str(angle),
-                        tuple(np.multiply(elbow, [640, 480]).astype(int)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2, cv2.LINE_AA)
+            # MediaPipe를 이용한 자세 감지
+            lm = pose.process(frame).pose_landmarks
+            if lm is None:
+                print("화면 안으로 들어오세요!")
+                cv2.imshow("Squat Rep Counter", frame)
+                cv2.waitKey(1)
+                continue
 
-            if angle > 140:
-                new_stage = "up"
-            elif angle < 20:
-                new_stage = "down"
+            frame.flags.writeable = True
+            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+
+            # 랜드마크 그리기
+            mp_drawing.draw_landmarks(frame, lm, mp_pose.POSE_CONNECTIONS)
+
+            lm_arr = lm.landmark
+            rAngle = findAngle(lm_arr[24], lm_arr[26], lm_arr[28])  # 오른쪽 다리
+            lAngle = findAngle(lm_arr[23], lm_arr[25], lm_arr[27])  # 왼쪽 다리
+
+            rState = legState(rAngle)
+            lState = legState(lAngle)
+            state = rState * lState
+
+            # 스쿼트 상태 판별
+            if state == 0:
+                print("다리 감지 안됨")
+            elif state % 2 == 0 or rState != lState:
+                print("자세를 조정하세요!")
             else:
-                new_stage = stage  
+                if state == 1 or state == 9:
+                    if lastState != state:
+                        lastState = state
+                        if lastState == 1:
+                            repCount += 1
+                            print(f"스쿼트 성공! 총 개수: {repCount}")
 
-            if new_stage != stage:
-                stage_start_time = time.time()
-                feedback = ""  
-
-            elif time.time() - stage_start_time > 5:
-                if new_stage == "up":
-                    feedback = "put down you arm more"
-                elif new_stage == "down":
-                    feedback = "push more"
-
-            stage = new_stage
-
-            if stage == "down" and prev_stage == "up":
-                counter += 1
-                print(f"운동 횟수: {counter}")
-
-                # Firebase에 날짜별 업데이트
-                update_firebase_count("user1", exercise_type, 1)
-            
-            prev_stage = stage  
-
-        except:
-            pass
-
-        cv2.rectangle(image, (0, 0), (300, 100), (245, 117, 16), -1)
-        cv2.putText(image, 'REPS', (15, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 1, cv2.LINE_AA)
-        cv2.putText(image, str(counter), (15, 80),
-                    cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2, cv2.LINE_AA)
-
-        cv2.putText(image, 'STAGE', (100, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 1, cv2.LINE_AA)
-        cv2.putText(image, stage if stage else "", (100, 80),
-                    cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2, cv2.LINE_AA)
-
-        cv2.putText(image, feedback, (10, 450),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2, cv2.LINE_AA)
-
-        mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS,
-                                  mp_drawing.DrawingSpec(color=(245, 117, 66), thickness=2, circle_radius=2),
-                                  mp_drawing.DrawingSpec(color=(245, 66, 230), thickness=2, circle_radius=2))
-
-        cv2.imshow('Mediapipe Feed', image)
-
-        if cv2.waitKey(10) & 0xFF == ord('q'):
-            break
+            cv2.imshow("Squat Rep Counter", frame)
+            if cv2.waitKey(1) & 0xFF == 27:
+                break
 
     cap.release()
     cv2.destroyAllWindows()
