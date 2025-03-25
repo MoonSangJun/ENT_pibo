@@ -1,7 +1,7 @@
-import os
-import sys
 from login import sign_up, login
-import bench  # 벤치프레스 모듈
+from squat import run_squat
+from bench import start_bench_tracking
+#일단은 스쿼트만 나중에 더 추가해야할듯
 
 def main():
     while True:
@@ -34,11 +34,12 @@ def select_exercise(user_id):
 
         if choice == "1":
             print("스쿼트 감지 시작!")
+            run_squat(user_id)  #스쿼트 실행
         elif choice == "2":
-            print("데드리프트 감지 준비 중... (추후 구현 예정)")
+            print("데드리프트 감지 준비 중...")  #나중에 추가할 부분
         elif choice == "3":
-            print("벤치프레스 감지를 실행합니다...")
-            bench.start_bench_tracking(user_id)  # user_id 넘김
+            print("벤치프레스 감지 준비 중...")  #나중에 추가할 부분
+            start_bench_tracking(user_id)
         elif choice == "4":
             print("로그아웃되었습니다.")
             break

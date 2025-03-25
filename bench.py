@@ -6,8 +6,9 @@ from datetime import datetime
 import random
 import firebase_admin
 from firebase_admin import credentials, firestore
+from dailyquest import check_daily_quest
 
-# Firebase 초기화 (이미 초기화된 경우 예외 처리)
+# Firebase 초기화
 if not firebase_admin._apps:
     cred = credentials.Certificate("ent-pibo-firebase-adminsdk-fbsvc-07ff86926b.json")
     firebase_admin.initialize_app(cred)
@@ -18,37 +19,32 @@ mp_drawing = mp.solutions.drawing_utils
 mp_pose = mp.solutions.pose
 
 def calculate_angle(a, b, c):
-    a = np.array(a)
-    b = np.array(b)
-    c = np.array(c)
-
+    a, b, c = np.array(a), np.array(b), np.array(c)
     radians = np.arctan2(c[1] - b[1], c[0] - b[0]) - np.arctan2(a[1] - b[1], a[0] - b[0])
     angle = np.abs(radians * 180.0 / np.pi)
+    return 360 - angle if angle > 180.0 else angle
 
-    if angle > 180.0:
-        angle = 360 - angle
-
-    return angle
-
-def update_firebase_count(user_id, exercise, count):
-    today_date = datetime.today().strftime('%Y-%m-%d')
-    doc_ref = db.collection("users").document(user_id).collection(exercise).document(today_date)
+def update_firebase_set(user_id, exercise):
+    today = datetime.today().strftime('%Y-%m-%d')
+    doc_ref = db.collection("users").document(user_id).collection(exercise).document(today)
     doc = doc_ref.get()
 
     if doc.exists:
-        current_count = doc.to_dict().get("reps", 0)
-        new_count = current_count + count
-        doc_ref.update({"reps": new_count})
+        current_set = doc.to_dict().get("sets", 0)
+        doc_ref.update({"sets": current_set + 1})
     else:
-        doc_ref.set({"reps": count})
+        doc_ref.set({"sets": 1})
 
-def store_score(user_id, exercise, score):
-    today_date = datetime.today().strftime('%Y-%m-%d')
-    score_ref = db.collection("users").document(user_id).collection(exercise).document(today_date)
+def update_firebase_total_score(user_id, score):
+    exp_ref = db.collection("users").document(user_id).collection("total").document("exp")
+    exp_doc = exp_ref.get()
 
-    score_ref.set({
-        "score": score
-    }, merge=True)
+    if exp_doc.exists:
+        current_score = exp_doc.to_dict().get("score", 0)
+        exp_ref.update({"score": current_score + score})
+    else:
+        exp_ref.set({"score": score})
+        
 
 def start_bench_tracking(user_id):
     cap = cv2.VideoCapture(0)
@@ -62,7 +58,6 @@ def start_bench_tracking(user_id):
 
     max_angle = 0
     min_angle = 180
-    score_list = []
 
     with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
         while cap.isOpened():
@@ -110,7 +105,6 @@ def start_bench_tracking(user_id):
                 if stage == "down" and prev_stage == "up":
                     counter += 1
                     print(f"운동 횟수: {counter}")
-                    update_firebase_count(user_id, exercise_type, 1)
 
                     if counter % 12 == 0:
                         print(f"한 세트 완료! 최고 각도: {max_angle:.2f}, 최저 각도: {min_angle:.2f}")
@@ -125,9 +119,11 @@ def start_bench_tracking(user_id):
                         else:
                             score = random.randint(40, 60)
 
-                        score_list.append(score)
-                        store_score(user_id, exercise_type, score)
                         print(f"부여된 점수: {score}")
+
+                        update_firebase_set(user_id, exercise_type)
+                        update_firebase_total_score(user_id, score)
+                        check_daily_quest(user_id)
 
                         max_angle = 0
                         min_angle = 180
@@ -141,7 +137,7 @@ def start_bench_tracking(user_id):
             cv2.rectangle(image, (0, 0), (300, 100), (245, 117, 16), -1)
             cv2.putText(image, 'REPS', (15, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 1, cv2.LINE_AA)
-            cv2.putText(image, str(counter), (15, 80),
+            cv2.putText(image, str(counter % 12), (15, 80),
                         cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2, cv2.LINE_AA)
 
             cv2.putText(image, 'STAGE', (100, 30),
