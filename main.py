@@ -1,6 +1,7 @@
 from login import sign_up, login
 from squat import run_squat
 from rank import print_user_ranking 
+from bench import start_bench_tracking
 #일단은 스쿼트만 나중에 더 추가해야할듯
 
 def main():
@@ -39,7 +40,7 @@ def select_exercise(user_id):
         elif choice == "2":
             print("데드리프트 감지 준비 중...")  #나중에 추가할 부분
         elif choice == "3":
-            print("벤치프레스 감지 준비 중...")  #나중에 추가할 부분
+            start_bench_tracking(user_id)
         elif choice == "4":
             print_user_ranking()
         elif choice == "5":
