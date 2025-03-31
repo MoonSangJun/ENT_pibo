@@ -1,5 +1,6 @@
 from login import sign_up, login
 from squat import run_squat
+from rank import print_user_ranking 
 #일단은 스쿼트만 나중에 더 추가해야할듯
 
 def main():
@@ -28,7 +29,8 @@ def select_exercise(user_id):
         print("1. 스쿼트")
         print("2. 데드리프트")
         print("3. 벤치프레스")
-        print("4. 로그아웃")
+        print("4. 랭킹보기")
+        print("5. 로그아웃")
         choice = input("운동 번호를 선택하세요: ")
 
         if choice == "1":
@@ -39,6 +41,8 @@ def select_exercise(user_id):
         elif choice == "3":
             print("벤치프레스 감지 준비 중...")  #나중에 추가할 부분
         elif choice == "4":
+            print_user_ranking()
+        elif choice == "5":
             print("로그아웃되었습니다.")
             break
         else:
