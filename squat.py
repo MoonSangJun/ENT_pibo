@@ -127,7 +127,7 @@ def run_squat(user_id):
                         print(f"🏁 세트 완료! 평균 점수: {set_score}")
                         update_workout_score(user_id, "squat", set_score)
                         update_workout_score(user_id, "total", set_score)
-                        check_daily_quest(user_id)s
+                        check_daily_quest(user_id)
                         score_list = []
 
             except Exception:

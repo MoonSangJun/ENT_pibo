@@ -7,6 +7,9 @@ import random
 import firebase_admin
 from firebase_admin import credentials, firestore
 from dailyquest import check_daily_quest
+from tts_stt import speak_feedback
+import threading
+import os
 
 # Firebase 초기화
 if not firebase_admin._apps:
@@ -28,7 +31,6 @@ def update_firebase_set(user_id, exercise):
     today = datetime.today().strftime('%Y-%m-%d')
     doc_ref = db.collection("users").document(user_id).collection(exercise).document(today)
     doc = doc_ref.get()
-
     if doc.exists:
         current_set = doc.to_dict().get("sets", 0)
         doc_ref.update({"sets": current_set + 1})
@@ -38,13 +40,16 @@ def update_firebase_set(user_id, exercise):
 def update_firebase_total_score(user_id, score):
     exp_ref = db.collection("users").document(user_id).collection("total").document("exp")
     exp_doc = exp_ref.get()
-
     if exp_doc.exists:
         current_score = exp_doc.to_dict().get("score", 0)
         exp_ref.update({"score": current_score + score})
     else:
         exp_ref.set({"score": score})
-        
+
+def play_feedback(text):
+    def run_tts():
+        speak_feedback(text)
+    threading.Thread(target=run_tts, daemon=True).start()
 
 def start_bench_tracking(user_id):
     cap = cv2.VideoCapture(0)
@@ -53,8 +58,8 @@ def start_bench_tracking(user_id):
     counter = 0
     stage = None
     prev_stage = None
-    feedback = ""
     stage_start_time = time.time()
+    last_feedback_time = time.time() - 10
 
     max_angle = 0
     min_angle = 180
@@ -82,23 +87,24 @@ def start_bench_tracking(user_id):
                          landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].y]
 
                 angle = calculate_angle(shoulder, elbow, wrist)
-
                 max_angle = max(max_angle, angle)
                 min_angle = min(min_angle, angle)
 
                 if angle > 140:
                     new_stage = "up"
-                elif angle < 20:
+                elif angle < 40:
                     new_stage = "down"
                 else:
                     new_stage = stage
 
                 if new_stage != stage:
                     stage_start_time = time.time()
-                    feedback = ""
-
-                elif time.time() - stage_start_time > 5:
-                    feedback = "팔을 더 크게 움직이세요"
+                elif time.time() - stage_start_time > 5 and time.time() - last_feedback_time > 10:
+                    if stage == "down":
+                        play_feedback("팔을 더 뻗으세요")
+                    elif stage == "up":
+                        play_feedback("팔을 더 내리세요")
+                    last_feedback_time = time.time()
 
                 stage = new_stage
 
@@ -120,20 +126,17 @@ def start_bench_tracking(user_id):
                             score = random.randint(40, 60)
 
                         print(f"부여된 점수: {score}")
-
+                        play_feedback(f"한 세트 완료! 부여된 점수는 {score}점입니다.")
                         update_firebase_set(user_id, exercise_type)
                         update_firebase_total_score(user_id, score)
                         check_daily_quest(user_id)
-
                         max_angle = 0
                         min_angle = 180
 
                 prev_stage = stage
-
             except:
                 pass
 
-            # 화면 출력
             cv2.rectangle(image, (0, 0), (300, 100), (245, 117, 16), -1)
             cv2.putText(image, 'REPS', (15, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 1, cv2.LINE_AA)
@@ -145,13 +148,7 @@ def start_bench_tracking(user_id):
             cv2.putText(image, stage if stage else "", (100, 80),
                         cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2, cv2.LINE_AA)
 
-            cv2.putText(image, feedback, (10, 450),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2, cv2.LINE_AA)
-
-            mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS,
-                                      mp_drawing.DrawingSpec(color=(245, 117, 66), thickness=2, circle_radius=2),
-                                      mp_drawing.DrawingSpec(color=(245, 66, 230), thickness=2, circle_radius=2))
-
+            mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
             cv2.imshow('Mediapipe Feed', image)
 
             if cv2.waitKey(10) & 0xFF == ord('q'):
