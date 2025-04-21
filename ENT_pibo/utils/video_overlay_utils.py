@@ -9,13 +9,13 @@ def draw_info_overlay(image, counter, set_counter, last_score, ready):
     pil_img = Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
     draw = ImageDraw.Draw(pil_img)
 
-    # MacOS ½Ã½ºÅÛ ±âº» ÇÑ±Û ÆùÆ®
+    # MacOS ì‹œìŠ¤í…œ ê¸°ë³¸ í•œê¸€ í°íŠ¸
     font = ImageFont.truetype("/System/Library/Fonts/Supplemental/AppleGothic.ttf", 32)
 
-    status_text = "¿îµ¿À» ½ÃÀÛÇÏ¼¼¿ä" if ready else "È­¸é¿¡ ¸ÂÃç ¼­ÁÖ¼¼¿ä"
-    draw.text((30, 30), f"¹İº¹ È½¼ö: {counter}", font=font, fill=(0,255,0))
-    draw.text((30, 70), f"¼¼Æ® ¼ö: {set_counter}", font=font, fill=(0,255,0))
-    draw.text((30, 110), f"ÀÌÀü Á¤È®µµ: {last_score if last_score is not None else '-'}", font=font, fill=(0,255,0))
+    status_text = "ìš´ë™ì„ ì‹œì‘í•˜ì„¸ìš”" if ready else "í™”ë©´ì— ë§ì¶° ì„œì£¼ì„¸ìš”"
+    draw.text((30, 30), f"ë°˜ë³µ íšŸìˆ˜: {counter}", font=font, fill=(0,255,0))
+    draw.text((30, 70), f"ì„¸íŠ¸ ìˆ˜: {set_counter}", font=font, fill=(0,255,0))
+    draw.text((30, 110), f"ì´ì „ ì •í™•ë„: {last_score if last_score is not None else '-'}", font=font, fill=(0,255,0))
     draw.text((30, 150), status_text, font=font, fill=(0,0,255) if not ready else (255,255,0))
 
     return cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)

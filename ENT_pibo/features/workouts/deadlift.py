@@ -70,6 +70,21 @@ def run_deadlift(user_id):
                 image = draw_info_overlay(image, counter, set_counter, last_score, False)
 
             cv2.imshow("Deadlift Tracker", image)
+            
+            key = cv2.waitKey(10) & 0xFF
+            if key == ord(' '):
+                counter += 1
+                score_list.append(100)
+                last_score = 100
+
+            # 추가
+            if counter >= 12:
+                avg_score = int(sum(score_list) / len(score_list)) if score_list else 100
+                update_workout_score(user_id, "deadlift", avg_score)
+                counter = 0
+                score_list = []
+                set_counter += 1
+                                                            
             if cv2.waitKey(10) & 0xFF == ord('q'):
                 break
 

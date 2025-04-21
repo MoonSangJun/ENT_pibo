@@ -2,7 +2,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 from datetime import datetime
 
-# Firebase ÃÊ±âÈ­ (ÀÌ¹Ì ÃÊ±âÈ­µÇ¾î ÀÖÀ¸¸é °Ç³Ê¶Ü)
+# Firebase ì´ˆê¸°í™” (ì´ë¯¸ ì´ˆê¸°í™”ë˜ì–´ ìˆìœ¼ë©´ ê±´ë„ˆëœ€)
 if not firebase_admin._apps:
     cred = credentials.Certificate("ent-pibo-firebase-adminsdk-fbsvc-07ff86926b.json")
     firebase_admin.initialize_app(cred)
@@ -14,7 +14,7 @@ def check_daily_quest(user_id):
     exercises = ["bench", "squat", "deadlift"]
     total_sets = 0
 
-    # ¿À´Ã ³¯Â¥ ±âÁØ ¿îµ¿ ¼¼Æ® ¼ö ÇÕ»ê
+    # ì˜¤ëŠ˜ ë‚ ì§œ ê¸°ì¤€ ìš´ë™ ì„¸íŠ¸ ìˆ˜ í•©ì‚°
     for exercise in exercises:
         doc_ref = db.collection("users").document(user_id).collection(exercise).document(today)
         doc = doc_ref.get()
@@ -22,14 +22,14 @@ def check_daily_quest(user_id):
             sets = doc.to_dict().get("sets", 0)
             total_sets += sets
 
-    # ÀÏÀÏ Äù½ºÆ® ¿Ï·á ¿©ºÎ È®ÀÎ
+    # ì¼ì¼ í€˜ìŠ¤íŠ¸ ì™„ë£Œ ì—¬ë¶€ í™•ì¸
     quest_ref = db.collection("users").document(user_id).collection("daily_quest").document(today)
     if quest_ref.get().exists:
-        print("? ¿À´ÃÀÇ Äù½ºÆ®´Â ÀÌ¹Ì ¿Ï·áµÇ¾ú½À´Ï´Ù.")
+        print("? ì˜¤ëŠ˜ì˜ í€˜ìŠ¤íŠ¸ëŠ” ì´ë¯¸ ì™„ë£Œë˜ì—ˆìŠµë‹ˆë‹¤.")
         return
 
     if total_sets >= 3:
-        # Á¡¼ö Ãß°¡
+        # ì ìˆ˜ ì¶”ê°€
         exp_ref = db.collection("users").document(user_id).collection("total").document("exp")
         exp_doc = exp_ref.get()
 
@@ -39,8 +39,8 @@ def check_daily_quest(user_id):
         else:
             exp_ref.set({"score": 1000})
 
-        # Äù½ºÆ® ¿Ï·á ±â·Ï
+        # í€˜ìŠ¤íŠ¸ ì™„ë£Œ ê¸°ë¡
         quest_ref.set({"completed": True})
-        print("? ÀÏÀÏ Äù½ºÆ® ¿Ï·á! 1000Á¡ÀÌ Ãß°¡µÇ¾ú½À´Ï´Ù.")
+        print("? ì¼ì¼ í€˜ìŠ¤íŠ¸ ì™„ë£Œ! 1000ì ì´ ì¶”ê°€ë˜ì—ˆìŠµë‹ˆë‹¤.")
     else:
-        print(f"ÇöÀç±îÁö ¼¼Æ® ¼ö: {total_sets}/3 ? ¾ÆÁ÷ Äù½ºÆ® Á¶°ÇÀ» ¸¸Á·ÇÏÁö ¾Ê¾Ò½À´Ï´Ù.")
+        print(f"í˜„ì¬ê¹Œì§€ ì„¸íŠ¸ ìˆ˜: {total_sets}/3 ? ì•„ì§ í€˜ìŠ¤íŠ¸ ì¡°ê±´ì„ ë§Œì¡±í•˜ì§€ ì•Šì•˜ìŠµë‹ˆë‹¤.")

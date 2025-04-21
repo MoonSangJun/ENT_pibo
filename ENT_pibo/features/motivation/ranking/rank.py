@@ -1,7 +1,7 @@
 from firebase_config import db
 
 def print_user_ranking(top_n=10):
-    print("? »ç¿ëÀÚ ·©Å· TOP", top_n)
+    print("? ì‚¬ìš©ì ë­í‚¹ TOP", top_n)
     print("-" * 35)
 
     users_ref = db.collection("users")
@@ -11,9 +11,9 @@ def print_user_ranking(top_n=10):
     rank = 1
     for doc in results:
         user = doc.to_dict()
-        name = user.get("name", "ÀÌ¸§¾øÀ½")
+        name = user.get("name", "ì´ë¦„ì—†ìŒ")
         exp = user.get("exp", 0)
         level = user.get("level", 1)
 
-        print(f"{rank}À§ | {name} | ·¹º§: {level} | °æÇèÄ¡: {exp}")
+        print(f"{rank}ìœ„ | {name} | ë ˆë²¨: {level} | ê²½í—˜ì¹˜: {exp}")
         rank += 1

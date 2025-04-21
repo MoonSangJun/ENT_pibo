@@ -6,5 +6,5 @@ def speak(text, lang='ko'):
     tts = gTTS(text=text, lang=lang)
     with tempfile.NamedTemporaryFile(delete=True, suffix=".mp3") as fp:
         tts.save(fp.name)
-        os.system(f"afplay {fp.name}")  # Mac ±âÁØ
-        # Windows¸é ¡æ os.system(f"start {fp.name}")
+        os.system(f"afplay {fp.name}")  # Mac ê¸°ì¤€
+        # Windowsë©´ â†’ os.system(f"start {fp.name}")

@@ -54,9 +54,9 @@ def run_squat(user_id):
                             score_list.append(last_score)
 
                             feedback = (
-                                "Á¶±İ¸¸ ´ú ¾É¾Æµµ ±¦Âú¾Æ¿ä." if min_squat_angle <= 75
-                                else "Á¶±İ ´õ ¾É¾ÆÁÖ¼¼¿ä." if min_squat_angle >= 90
-                                else "ÁÁÀº ÀÚ¼¼¿¹¿ä!"
+                                "ì¡°ê¸ˆë§Œ ëœ ì•‰ì•„ë„ ê´œì°®ì•„ìš”." if min_squat_angle <= 75
+                                else "ì¡°ê¸ˆ ë” ì•‰ì•„ì£¼ì„¸ìš”." if min_squat_angle >= 90
+                                else "ì¢‹ì€ ìì„¸ì˜ˆìš”!"
                             )
                             if feedback != last_feedback:
                                 speak(feedback)
@@ -64,7 +64,7 @@ def run_squat(user_id):
 
                             if counter >= 12:
                                 avg_score = int(sum(score_list) / len(score_list))
-                                speak(f"¼¼Æ® ¿Ï·á! Æò±Õ Á¡¼ö´Â {avg_score}Á¡ÀÔ´Ï´Ù.")
+                                speak(f"ì„¸íŠ¸ ì™„ë£Œ! í‰ê·  ì ìˆ˜ëŠ” {avg_score}ì ì…ë‹ˆë‹¤.")
                                 update_workout_score(user_id, "squat", avg_score, reps=12, sets=1)
                                 counter = 0
                                 score_list = []
@@ -81,6 +81,21 @@ def run_squat(user_id):
                 image = draw_info_overlay(image, counter, set_counter, last_score, False)
 
             cv2.imshow("Squat Assistant", image)
+            
+            key = cv2.waitKey(10) & 0xFF
+            if key == ord(' '):
+                counter += 1
+                score_list.append(100)
+                last_score = 100
+
+            # ì¶”ê°€
+            if counter >= 12:
+                avg_score = int(sum(score_list) / len(score_list)) if score_list else 100
+                update_workout_score(user_id, "squat", avg_score)
+                counter = 0
+                score_list = []
+                set_counter += 1            
+            
             if cv2.waitKey(10) & 0xFF == ord('q'):
                 break
 

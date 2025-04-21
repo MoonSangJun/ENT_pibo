@@ -51,7 +51,7 @@ def run_bench(user_id):
 
                             if counter >= 12:
                                 avg_score = int(sum(score_list) / len(score_list))
-                                speak_feedback(f"¼¼Æ® ¿Ï·á! Æò±Õ Á¡¼ö´Â {avg_score}Á¡ÀÔ´Ï´Ù.")
+                                speak_feedback(f"ì„¸íŠ¸ ì™„ë£Œ! í‰ê·  ì ìˆ˜ëŠ” {avg_score}ì ìž…ë‹ˆë‹¤.")
                                 update_workout_score(user_id, "bench", avg_score, reps=12, sets=1)
                                 counter = 0
                                 score_list = []
@@ -68,6 +68,21 @@ def run_bench(user_id):
                 image = draw_info_overlay(image, counter, set_counter, last_score, False)
 
             cv2.imshow("Bench Tracker", image)
+            
+            key = cv2.waitKey(10) & 0xFF
+            if key == ord(' '):
+                counter += 1
+                score_list.append(100)
+                last_score = 100
+
+            # ì¶”ê°€
+            if counter >= 12:
+                avg_score = int(sum(score_list) / len(score_list)) if score_list else 100
+                update_workout_score(user_id, "bench", avg_score)
+                counter = 0
+                score_list = []
+                set_counter += 1
+            
             if cv2.waitKey(10) & 0xFF == ord('q'):
                 break
 
