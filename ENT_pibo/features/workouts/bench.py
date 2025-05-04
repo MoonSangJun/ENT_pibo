@@ -1,19 +1,25 @@
 import cv2
 import mediapipe as mp
+from datetime import datetime
 from utils.pose_utils import calculate_2d_angle
 from utils.firebase_utils import update_workout_score
+from utils.firebase_utils import get_user_difficulty
 from utils.video_overlay_utils import all_landmarks_visible, draw_info_overlay
 from features.communication.tts_stt import speak_feedback
 
-def run_bench(user_id):
+def run_bench(user_id, difficulty):
+    difficulty = get_user_difficulty(user_id)
+    reps_per_set = {"easy": 8, "normal": 12, "hard": 15}.get(difficulty, 12)
     cap = cv2.VideoCapture(1)
     counter, set_counter = 0, 0
+    total_reps, total_exp = 0, 0
     score_list = []
     stage = None
     last_score = None
+    start_time = datetime.now()
+    required_landmarks = [11, 13, 15, 12, 14, 16]
     mp_pose_instance = mp.solutions.pose
 
-    required_landmarks = [11, 13, 15, 12, 14, 16]
     with mp_pose_instance.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
         while cap.isOpened():
             ret, frame = cap.read()
@@ -48,14 +54,16 @@ def run_bench(user_id):
                             stage = "up"
                             counter += 1
                             score_list.append(last_score)
+                            total_reps += 1
+                            total_exp += last_score
 
-                            if counter >= 12:
+                            if counter >= reps_per_set:
                                 avg_score = int(sum(score_list) / len(score_list))
                                 speak_feedback(f"세트 완료! 평균 점수는 {avg_score}점입니다.")
-                                update_workout_score(user_id, "bench", avg_score, reps=12, sets=1)
+                                set_counter += 1
                                 counter = 0
                                 score_list = []
-                                set_counter += 1
+                                stage = None
                     except Exception as e:
                         print(e)
 
@@ -68,22 +76,32 @@ def run_bench(user_id):
                 image = draw_info_overlay(image, counter, set_counter, last_score, False)
 
             cv2.imshow("Bench Tracker", image)
-            
+
             key = cv2.waitKey(10) & 0xFF
-            if key == ord(' '):
+            if key == ord(' '):  # 수동 디버그
                 counter += 1
                 score_list.append(100)
                 last_score = 100
+                total_reps += 1
+                total_exp += 100
 
-            # 추가
-            if counter >= 12:
-                avg_score = int(sum(score_list) / len(score_list)) if score_list else 100
-                update_workout_score(user_id, "bench", avg_score)
-                counter = 0
-                score_list = []
-                set_counter += 1
-            
-            if cv2.waitKey(10) & 0xFF == ord('q'):
+                if counter >= reps_per_set:
+                    avg_score = int(sum(score_list) / len(score_list))
+                    speak_feedback(f"세트 완료! 평균 점수는 {avg_score}점입니다.")
+                    set_counter += 1
+                    counter = 0
+                    score_list = []
+                    stage = None
+
+            elif key == ord('q'):
+                end_time = datetime.now()
+                if total_reps > 0:
+                    update_workout_score(user_id=user_id,
+                                         workout_type="bench",
+                                         score=total_exp,
+                                         reps=total_reps,
+                                         start_time=start_time,
+                                         end_time=end_time)
                 break
 
     cap.release()
