@@ -1,0 +1,8 @@
+# ignore all .json files
+*.json
+ent-pibo-firebase-adminsdk-fbsvc-07ff86926b.json
+ent-pibo-firebase-adminsdk-fbsvc-666a413106.json
+
+
+# .env 파일 무시 (보안 중요)
+.env
