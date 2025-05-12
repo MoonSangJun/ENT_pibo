@@ -357,9 +357,10 @@ from utils.video_overlay_utils import all_landmarks_visible, draw_info_overlay
 from features.video.camera_receive import get_frame_from_pibo
 from features.communication.tts_sender import send_feedback_signal_to_pibo
 from features.communication.tts_stt_mac import speak 
+from features.communication.send_montion_pibo import send_motion_command
 import speech_recognition as sr
 
-from features.communication.send_mp3_pibo import send_tts_mp3_to_pibo
+from features.communication.send_mp3_pibo import send_tts
 
 stop_exercise = False
 
@@ -402,6 +403,7 @@ def run_squat(user_id):
     min_squat_angle = None
     last_feedback = None
     mp_pose_instance = mp.solutions.pose
+
 
     frame_generator = get_frame_from_pibo()
 
@@ -456,18 +458,23 @@ def run_squat(user_id):
 
                             if feedback != last_feedback:
                                 #send_feedback_signal_to_pibo(feedback)
-                                send_tts_mp3_to_pibo(feedback)
+                                #send_tts(feedback)
 
-                                #speak(feedback)
+                                
+                                speak(feedback)
                                 #굳이 파이보로 말할 필요가 있을까??
                                 #노트북 으로 하는 버전, 파이보로 하는 버전 2개 하면 좋을듯
                                 last_feedback = feedback
+                            
+                            speak(f"{counter}회 완료!")
 
                             min_squat_angle = None
 
                             if counter >= 12:
+                                send_motion_command("finish_set")
                                 avg_score = int(sum(score_list) / len(score_list))
-                                #speak(f"세트 완료! 평균 점수는 {avg_score}점입니다.")
+                                speak(f"세트 완료! 평균 점수는 {avg_score}점입니다.")
+                                
                                 update_workout_score(user_id, "squat", avg_score, reps=12, sets=1)
                                 counter = 0
                                 score_list = []

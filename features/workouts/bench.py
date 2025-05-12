@@ -155,7 +155,7 @@ import mediapipe as mp
 from utils.pose_utils import calculate_2d_angle
 from utils.firebase_utils import update_workout_score
 from utils.video_overlay_utils import all_landmarks_visible, draw_info_overlay
-from features.communication.tts_stt import speak_feedback # 이건 뭐임..?
+#from features.communication.tts_stt import speak_feedback # 이건 뭐임..?
 from features.video.camera_receive import get_frame_from_pibo
 from features.communication.tts_sender import send_feedback_signal_to_pibo
 from features.communication.tts_stt_mac import speak 

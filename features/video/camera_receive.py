@@ -6,7 +6,7 @@ import cv2
 HOST = '0.0.0.0'  # 모든 IP로부터 수신
 PORT = 8485       # 파이보와 일치하는 포트
 
-# 서버 소켓 초기화
+#서버 소켓 초기화
 server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server_socket.bind((HOST, PORT))
 server_socket.listen(1)
@@ -15,7 +15,7 @@ print("[서버 대기 중] 파이보 연결 기다리는 중...")
 conn, addr = server_socket.accept()
 print(f"[연결됨] 파이보 주소: {addr}")
 
-data = b""
+data = b"" 
 payload_size = struct.calcsize(">L")
 
 def get_frame_from_pibo():
