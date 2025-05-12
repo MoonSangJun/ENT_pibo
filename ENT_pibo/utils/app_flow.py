@@ -1,11 +1,10 @@
 from firebase_config import db
-from utils.firebase_utils import update_user_settings
-from utils.firebase_utils import get_user_difficulty
+from utils.firebase_utils import update_user_settings, get_user_difficulty
 from features.workouts.squat import run_squat
 from features.workouts.bench import run_bench
 from features.workouts.deadlift import run_deadlift
 from features.auth.login import sign_up, login
-
+from features.motivation.quests.dailyquest import create_daily_quest
 
 def number_to_level(num, field_type):
     mappings = {
@@ -95,6 +94,7 @@ def settings_menu(user_id):
 
 
 def exercise_menu(user_id):
+    create_daily_quest(user_id)
     difficulty = get_user_difficulty(user_id)
     
     while True:
@@ -103,8 +103,7 @@ def exercise_menu(user_id):
         print("2. 데드리프트")
         print("3. 벤치프레스")
         print("4. 설정 변경")
-        print("5. 순위 확인")  # 순위 확인 메뉴 추가
-        print("6. 로그아웃")
+        print("5. 로그아웃")
         choice = input("옵션을 선택해주세요!: ")
 
         if choice == "1":
@@ -119,8 +118,6 @@ def exercise_menu(user_id):
         elif choice == "4":
             settings_menu(user_id)
         elif choice == "5":
-            print("벤치프레스 감지 시작!")
-        elif choice == "6":
             print("로그아웃되었습니다.")
             break
         else:
