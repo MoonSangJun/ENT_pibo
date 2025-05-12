@@ -1,6 +1,0 @@
-# ignore all .json files
-*.json
-
-
-# .env 파일 무시 (보안 중요)
-.env
