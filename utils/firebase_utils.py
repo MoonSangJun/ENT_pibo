@@ -200,7 +200,7 @@ def update_user_settings(user_id, nickname=None, pibo_mode=None, group1=None, gr
     update_data = {}
     if nickname:
         update_data['nickname'] = nickname
-    if pibo_mode in ['soft', 'normal', 'hard']:
+    if pibo_mode in ['friendly', 'spartan']:
         update_data['pibo_mode'] = pibo_mode
     if group1:
         update_data['group1'] = group1
@@ -219,6 +219,13 @@ def get_user_difficulty(user_id):
     if not user_doc.exists:
         return "normal"
     return user_doc.to_dict().get("difficulty", "normal")
+
+    #get 파이보 모드 추가 
+def get_user_pibo_mode(user_id):
+    user_doc = db.collection("users").document(user_id).get()
+    if not user_doc.exists:
+        return "friendly"
+    return user_doc.to_dict().get("pibo_mode", "friendly")
 
 def get_today_stats(user_id, date):
     stats_doc = db.collection("users").document(user_id).collection("statistics").document("daily").get()
