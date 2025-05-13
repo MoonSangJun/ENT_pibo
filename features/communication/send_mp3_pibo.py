@@ -49,7 +49,7 @@ import asyncio
 import edge_tts
 
 async def send_tts_mp3_to_pibo(text):
-    SERVER_IP = '192.168.0.5'  # 🧠 파이보 IP
+    SERVER_IP = '192.168.0.3'  # 🧠 파이보 IP
     PORT = 8685
     VOICE = "ko-KR-InJoonNeural"
     RATE = "+10%"  # 말 속도 조절 가능

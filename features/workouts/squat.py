@@ -348,11 +348,190 @@
 #     cv2.destroyAllWindows()
 
 
+# import cv2
+# import threading
+# import mediapipe as mp
+# from utils.pose_utils import calculate_2d_angle
+# from utils.firebase_utils import update_workout_score
+# from utils.video_overlay_utils import all_landmarks_visible, draw_info_overlay
+# from features.video.camera_receive import get_frame_from_pibo
+# from features.communication.tts_sender import send_feedback_signal_to_pibo
+# from features.communication.tts_stt_mac import speak 
+# from features.communication.send_montion_pibo import send_motion_command
+# import speech_recognition as sr
+
+# from features.communication.send_mp3_pibo import send_tts
+
+# stop_exercise = False
+
+# def monitor_for_stop():
+#     """ 음성으로 '종료'를 감지하는 스레드 함수 """
+#     global stop_exercise
+#     recognizer = sr.Recognizer()
+#     mic = sr.Microphone()
+
+#     with mic as source:
+#         recognizer.adjust_for_ambient_noise(source)
+#         print("[음성 감지] '종료' 명령 대기 중...")
+
+#     while not stop_exercise:
+#         with mic as source:
+#             try:
+#                 audio = recognizer.listen(source, timeout=1, phrase_time_limit=3)
+#                 command = recognizer.recognize_google(audio, language="ko-KR")
+#                 print(f"[음성 인식 결과] {command}")
+
+#                 if "종료" in command:
+#                     print("[종료 감지] 운동 종료를 시작합니다.")
+#                     stop_exercise = True
+#                     break
+
+#             except Exception:
+#                 continue
+
+
+# def run_squat(user_id):
+#     global stop_exercise
+#     stop_exercise = False 
+
+#     threading.Thread(target=monitor_for_stop, daemon=True).start()
+
+#     counter, set_counter = 0, 0
+#     stage = None
+#     score_list = []
+#     last_score = None
+#     min_squat_angle = None
+#     last_feedback = None
+#     mp_pose_instance = mp.solutions.pose
+
+
+#     frame_generator = get_frame_from_pibo()
+
+#     required_landmarks = [23, 25, 27, 24, 26, 28]
+
+#     with mp_pose_instance.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
+#         for frame in frame_generator:
+#             if stop_exercise:
+#                 print("[운동 강제 종료 감지]")
+#                 break
+#             #ret, frame = cap.read()
+#             # if not ret:
+#             #     break
+
+#             frame = cv2.flip(frame, 1)
+#             image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+#             image.flags.writeable = False
+#             results = pose.process(image)
+#             image.flags.writeable = True
+#             image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+
+#             if results.pose_landmarks:
+#                 landmarks = results.pose_landmarks.landmark
+#                 ready = all_landmarks_visible(landmarks, required_landmarks)
+
+#                 if ready:
+#                     try:
+#                         hip = [landmarks[23].x, landmarks[23].y]
+#                         knee = [landmarks[25].x, landmarks[25].y]
+#                         ankle = [landmarks[27].x, landmarks[27].y]
+#                         angle = calculate_2d_angle(hip, knee, ankle)
+
+#                         if angle < 120:
+#                             if stage != "down":
+#                                 stage = "down"
+#                                 min_squat_angle = angle
+#                             else:
+#                                 min_squat_angle = min(min_squat_angle, angle)
+#                         elif angle > 170 and stage == "down":
+#                             stage = "up"
+#                             counter += 1
+#                             score = max(0, 100 - abs(min_squat_angle - 90) * 0.3)
+#                             last_score = int(score)
+#                             score_list.append(last_score)
+
+#                             feedback = (
+#                                 "조금만 덜 앉아도 괜찮아요." if min_squat_angle <= 75
+#                                 else "조금 더 앉아주세요." if min_squat_angle >= 90
+#                                 else "좋은 자세예요!"
+#                             )
+                        
+
+#                             if feedback != last_feedback:
+#                                 #send_feedback_signal_to_pibo(feedback)
+#                                 #send_tts(feedback)
+
+                                
+#                                 speak(feedback)
+#                                 #굳이 파이보로 말할 필요가 있을까??
+#                                 #노트북 으로 하는 버전, 파이보로 하는 버전 2개 하면 좋을듯
+#                                 last_feedback = feedback
+                            
+#                             speak(f"{counter}회 완료!")
+
+#                             min_squat_angle = None
+
+#                             if counter >= 12:
+#                                 send_motion_command("finish_set")
+#                                 avg_score = int(sum(score_list) / len(score_list))
+#                                 speak(f"세트 완료! 평균 점수는 {avg_score}점입니다.")
+                                
+#                                 update_workout_score(user_id, "squat", avg_score, reps=12, sets=1)
+#                                 counter = 0
+#                                 score_list = []
+#                                 set_counter += 1
+#                     except Exception as e:
+#                         print(e)
+
+#                 image = draw_info_overlay(image, counter, set_counter, last_score, ready)
+#                 if counter == 0 and last_score:
+#                     cv2.putText(image, f"Set Score: {last_score}", (250, 250),
+#                                 cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 0), 3)
+#                 mp.solutions.drawing_utils.draw_landmarks(image, results.pose_landmarks, mp_pose_instance.POSE_CONNECTIONS)
+#             else:
+#                 image = draw_info_overlay(image, counter, set_counter, last_score, False)
+
+#             cv2.imshow("Squat Assistant", image)
+            
+#             key = cv2.waitKey(10) & 0xFF
+#             if key == ord(' '):
+#                 counter += 1
+#                 score_list.append(100)
+#                 last_score = 100
+
+#             # 추가
+#             if counter >= 12:
+#                 avg_score = int(sum(score_list) / len(score_list)) if score_list else 100
+#                 update_workout_score(user_id, "squat", avg_score)
+#                 counter = 0
+#                 score_list = []
+#                 set_counter += 1            
+            
+#             if cv2.waitKey(10) & 0xFF == ord('q'):
+#                 break
+
+    
+#     cv2.destroyAllWindows()
+
+
+
+
+
+
+    ###############################################
+    ###################
+###############################################
+    ###################
+    ###############################################
+    ###################
+    
+
 import cv2
-import threading
 import mediapipe as mp
+import threading
+from datetime import datetime
 from utils.pose_utils import calculate_2d_angle
 from utils.firebase_utils import update_workout_score
+from utils.firebase_utils import get_user_difficulty
 from utils.video_overlay_utils import all_landmarks_visible, draw_info_overlay
 from features.video.camera_receive import get_frame_from_pibo
 from features.communication.tts_sender import send_feedback_signal_to_pibo
@@ -360,9 +539,6 @@ from features.communication.tts_stt_mac import speak
 from features.communication.send_montion_pibo import send_motion_command
 import speech_recognition as sr
 
-from features.communication.send_mp3_pibo import send_tts
-
-stop_exercise = False
 
 def monitor_for_stop():
     """ 음성으로 '종료'를 감지하는 스레드 함수 """
@@ -390,24 +566,30 @@ def monitor_for_stop():
                 continue
 
 
-def run_squat(user_id):
+
+
+
+
+
+def run_squat(user_id, difficulty):
     global stop_exercise
     stop_exercise = False 
 
     threading.Thread(target=monitor_for_stop, daemon=True).start()
 
+
+    difficulty = get_user_difficulty(user_id)
+    reps_per_set = {"easy": 8, "normal": 12, "hard": 15}.get(difficulty, 12)
     counter, set_counter = 0, 0
-    stage = None
+    total_reps, total_exp = 0, 0
     score_list = []
+    stage = None
     last_score = None
-    min_squat_angle = None
-    last_feedback = None
+    start_time = datetime.now()
+    required_landmarks = [23, 25, 27, 24, 26, 28]
     mp_pose_instance = mp.solutions.pose
 
-
     frame_generator = get_frame_from_pibo()
-
-    required_landmarks = [23, 25, 27, 24, 26, 28]
 
     with mp_pose_instance.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
         for frame in frame_generator:
@@ -431,83 +613,78 @@ def run_squat(user_id):
 
                 if ready:
                     try:
-                        hip = [landmarks[23].x, landmarks[23].y]
-                        knee = [landmarks[25].x, landmarks[25].y]
-                        ankle = [landmarks[27].x, landmarks[27].y]
-                        angle = calculate_2d_angle(hip, knee, ankle)
+                        left_angle = calculate_2d_angle(
+                            [landmarks[23].x, landmarks[23].y],
+                            [landmarks[25].x, landmarks[25].y],
+                            [landmarks[27].x, landmarks[27].y]
+                        )
+                        right_angle = calculate_2d_angle(
+                            [landmarks[24].x, landmarks[24].y],
+                            [landmarks[26].x, landmarks[26].y],
+                            [landmarks[28].x, landmarks[28].y]
+                        )
+                        avg_angle = (left_angle + right_angle) / 2
+                        accuracy = max(0, 100 - abs(avg_angle - 90))
+                        last_score = int(accuracy)
 
-                        if angle < 120:
-                            if stage != "down":
-                                stage = "down"
-                                min_squat_angle = angle
-                            else:
-                                min_squat_angle = min(min_squat_angle, angle)
-                        elif angle > 170 and stage == "down":
+                        if avg_angle < 100:
+                            stage = "down"
+                        elif avg_angle > 160 and stage == "down":
                             stage = "up"
                             counter += 1
-                            score = max(0, 100 - abs(min_squat_angle - 90) * 0.3)
-                            last_score = int(score)
                             score_list.append(last_score)
+                            total_reps += 1
+                            total_exp += last_score
 
-                            feedback = (
-                                "조금만 덜 앉아도 괜찮아요." if min_squat_angle <= 75
-                                else "조금 더 앉아주세요." if min_squat_angle >= 90
-                                else "좋은 자세예요!"
-                            )
-                        
-
-                            if feedback != last_feedback:
-                                #send_feedback_signal_to_pibo(feedback)
-                                #send_tts(feedback)
-
-                                
-                                speak(feedback)
-                                #굳이 파이보로 말할 필요가 있을까??
-                                #노트북 으로 하는 버전, 파이보로 하는 버전 2개 하면 좋을듯
-                                last_feedback = feedback
-                            
-                            speak(f"{counter}회 완료!")
-
-                            min_squat_angle = None
-
-                            if counter >= 12:
-                                send_motion_command("finish_set")
+                            if counter >= reps_per_set:
                                 avg_score = int(sum(score_list) / len(score_list))
                                 speak(f"세트 완료! 평균 점수는 {avg_score}점입니다.")
-                                
-                                update_workout_score(user_id, "squat", avg_score, reps=12, sets=1)
+                                set_counter += 1
                                 counter = 0
                                 score_list = []
-                                set_counter += 1
+                                stage = None
                     except Exception as e:
                         print(e)
 
                 image = draw_info_overlay(image, counter, set_counter, last_score, ready)
-                if counter == 0 and last_score:
-                    cv2.putText(image, f"Set Score: {last_score}", (250, 250),
-                                cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 0), 3)
                 mp.solutions.drawing_utils.draw_landmarks(image, results.pose_landmarks, mp_pose_instance.POSE_CONNECTIONS)
             else:
                 image = draw_info_overlay(image, counter, set_counter, last_score, False)
 
-            cv2.imshow("Squat Assistant", image)
-            
+            cv2.imshow("Squat Tracker", image)
+
             key = cv2.waitKey(10) & 0xFF
-            if key == ord(' '):
+            if key == ord(' '):  # 수동 디버그
                 counter += 1
                 score_list.append(100)
                 last_score = 100
+                total_reps += 1
+                total_exp += 100
 
-            # 추가
-            if counter >= 12:
-                avg_score = int(sum(score_list) / len(score_list)) if score_list else 100
-                update_workout_score(user_id, "squat", avg_score)
-                counter = 0
-                score_list = []
-                set_counter += 1            
-            
-            if cv2.waitKey(10) & 0xFF == ord('q'):
+                if counter >= reps_per_set:
+                    avg_score = int(sum(score_list) / len(score_list))
+                    speak_feedback(f"세트 완료! 평균 점수는 {avg_score}점입니다.")
+                    set_counter += 1
+                    counter = 0
+                    score_list = []
+                    stage = None
+                    
+            if key == ord('q'):
+                end_time = datetime.now()
+                if total_reps > 0:
+                    update_workout_score(user_id=user_id,
+                                         workout_type="squat",
+                                         score=total_exp,
+                                         reps=total_reps,
+                                         start_time=start_time,
+                                         end_time=end_time)
                 break
 
-    
+   
     cv2.destroyAllWindows()
+
+
+
+
+
+    

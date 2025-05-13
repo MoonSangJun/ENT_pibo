@@ -15,8 +15,10 @@ print("[서버 대기 중] 파이보 연결 기다리는 중...")
 conn, addr = server_socket.accept()
 print(f"[연결됨] 파이보 주소: {addr}")
 
+
 data = b"" 
 payload_size = struct.calcsize(">L")
+
 
 def get_frame_from_pibo():
     global data
