@@ -42,10 +42,10 @@ def run_deadlift(user_id, difficulty):
             image.flags.writeable = True
             image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
-            # 인삿말
+            # 인삿말 (최초 1회)
             if not feedback_flags["greeted"]:
                 if pibo_mode == "friendly":
-                    speak_feedback("데드리프트를 시작합니다. 준비되셨나요?")
+                    speak_feedback("데드리프트 시작합니다. 이번 운동도 잘 해낼거에요. 화이팅.")
                 elif pibo_mode == "spartan":
                     speak_feedback("운동 시작이다. 자세 잡아라.")
                 feedback_flags["greeted"] = True    
@@ -95,18 +95,18 @@ def run_deadlift(user_id, difficulty):
                             # 세트 후반부 응원
                             if counter >= int(reps_per_set * 0.7) and not feedback_flags["encouraged"]:
                                 if pibo_mode == "friendly":
-                                    speak_feedback("좋아요! 조금만 더 힘내세요!")
+                                    speak_feedback("좋아요! 거의 다 왔어요 조금만 더 힘내세요!")
                                 elif pibo_mode == "spartan":
-                                    speak_feedback("더 열심히 해! 아직 멀었어!")
+                                    speak_feedback("하나 더! 아직 멀었어!")
                                 feedback_flags["encouraged"] = True
 
                             # 세트 완료 시
                             if counter >= reps_per_set:
                                 avg_score = int(sum(score_list) / len(score_list))
                                 if pibo_mode == "friendly":
-                                    speak_feedback(f"세트 끝! 수고했어요~ 평균 점수는 {avg_score}점입니다.")
+                                    speak_feedback(f"세트 끝! 수고했어요~ 평균 점수는 {avg_score}점이에요.")
                                 elif pibo_mode == "spartan":
-                                    speak_feedback(f"세트 완료다. 점수는 {avg_score}점이다.")
+                                    speak_feedback(f"세트 완료다. 점수는 {avg_score}점이다. 더 열심히 하도록!")
                                 set_counter += 1
                                 counter = 0
                                 score_list = []
@@ -149,16 +149,16 @@ def run_deadlift(user_id, difficulty):
             if key == ord('q'):
                 if not exit_pressed_once:
                     if pibo_mode == "friendly":
-                        speak_feedback("정말 종료하시겠어요? 한 번 더 누르면 종료합니다.")
+                        speak_feedback("정말 종료하시겠어요? 한세트 더 해보는건 어떨까요?.")
                     elif pibo_mode == "spartan":
-                        speak_feedback("끝낼 거면 다시 눌러라.")
+                        speak_feedback("고작 이걸로 운동 끝내게 다시 원위치해")
                     exit_pressed_once = True
                     exit_time = datetime.now()
                 elif (datetime.now() - exit_time).total_seconds() <= 3:
                     if pibo_mode == "friendly":
                         speak_feedback("수고하셨습니다! 운동을 종료합니다.")
                     elif pibo_mode == "spartan":
-                        speak_feedback("운동 끝났다. 나가도 좋다.")
+                        speak_feedback("운동 끝났다. 가도 좋다.")
                     if total_reps > 0:
                         end_time = datetime.now()
                         update_workout_score(

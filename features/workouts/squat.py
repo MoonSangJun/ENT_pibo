@@ -44,8 +44,11 @@ def run_squat(user_id, difficulty):
 
             # 인삿말 (최초 1회)
             if not feedback_flags["greeted"]:
-                speak_feedback("스쿼트를 시작합니다. 준비되셨나요?")
-                feedback_flags["greeted"] = True
+                if pibo_mode == "friendly":
+                    speak_feedback("스쿼트 시작합니다. 이번 운동도 잘 해낼거에요. 화이팅.")
+                elif pibo_mode == "spartan":
+                    speak_feedback("운동 시작이다. 자세 잡아라.")
+                feedback_flags["greeted"] = True 
 
             if results.pose_landmarks:
                 landmarks = results.pose_landmarks.landmark
@@ -85,13 +88,19 @@ def run_squat(user_id, difficulty):
 
                             # 세트 후반부 응원
                             if counter >= int(reps_per_set * 0.7) and not feedback_flags["encouraged"]:
-                                speak_feedback("좋아요! 조금만 더 힘내세요!")
+                                if pibo_mode == "friendly":
+                                    speak_feedback("좋아요! 거의 다 왔어요 조금만 더 힘내세요!")
+                                elif pibo_mode == "spartan":
+                                    speak_feedback("하나 더! 아직 멀었어!")
                                 feedback_flags["encouraged"] = True
 
                             # 세트 완료 시
                             if counter >= reps_per_set:
                                 avg_score = int(sum(score_list) / len(score_list))
-                                speak_feedback(f"세트 완료! 평균 점수는 {avg_score}점입니다.")
+                                if pibo_mode == "friendly":
+                                    speak_feedback(f"세트 끝! 수고했어요~ 평균 점수는 {avg_score}점이에요.")
+                                elif pibo_mode == "spartan":
+                                    speak_feedback(f"세트 완료다. 점수는 {avg_score}점이다. 더 열심히 하도록!")
                                 set_counter += 1
                                 counter = 0
                                 score_list = []
@@ -108,7 +117,9 @@ def run_squat(user_id, difficulty):
             cv2.imshow("Squat Tracker", image)
 
             key = cv2.waitKey(10) & 0xFF
-            if key == ord(' '):  # 수동 디버그
+            
+            # 테스트용 강제 카운트
+            if key == ord(' '):
                 counter += 1
                 score_list.append(100)
                 last_score = 100
@@ -117,22 +128,39 @@ def run_squat(user_id, difficulty):
 
                 if counter >= reps_per_set:
                     avg_score = int(sum(score_list) / len(score_list))
-                    speak_feedback(f"세트 완료! 평균 점수는 {avg_score}점입니다.")
+                    if pibo_mode == "friendly":
+                        speak_feedback(f"세트 끝! 수고했어요~ 평균 점수는 {avg_score}점입니다.")
+                    elif pibo_mode == "spartan":
+                        speak_feedback(f"세트 완료다. 점수는 {avg_score}점이다.")
                     set_counter += 1
                     counter = 0
                     score_list = []
                     stage = None
+                    feedback_flags["encouraged"] = False
 
+            # 종료 로직
             if key == ord('q'):
-                end_time = datetime.now()
-                if total_reps > 0:
-                    update_workout_score(user_id=user_id,
-                                         workout_type="squat",
-                                         score=total_exp,
-                                         reps=total_reps,
-                                         start_time=start_time,
-                                         end_time=end_time)
-                break
+                if not exit_pressed_once:
+                    if pibo_mode == "friendly":
+                        speak_feedback("정말 종료하시겠어요? 한세트 더 해보는건 어떨까요?.")
+                    elif pibo_mode == "spartan":
+                        speak_feedback("고작 이걸로 운동 끝내게 다시 원위치해")
+                    exit_pressed_once = True
+                    exit_time = datetime.now()
+                elif (datetime.now() - exit_time).total_seconds() <= 3:
+                    if pibo_mode == "friendly":
+                        speak_feedback("수고하셨습니다! 운동을 종료합니다.")
+                    elif pibo_mode == "spartan":
+                        speak_feedback("운동 끝났다. 가도 좋다.")
+                    if total_reps > 0:
+                        end_time = datetime.now()
+                        update_workout_score(user_id=user_id,
+                                            workout_type="squat",
+                                            score=total_exp,
+                                            reps=total_reps,
+                                            start_time=start_time,
+                                            end_time=end_time)
+                    break
 
     cap.release()
     cv2.destroyAllWindows()
