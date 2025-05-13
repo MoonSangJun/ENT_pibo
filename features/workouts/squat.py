@@ -171,18 +171,20 @@ def run_squat(user_id, difficulty):
                                             total_exp += last_score
                                             
                                             print(min_down_angle)
-                                        
-                                        if min_down_angle is not None:    
-                                            if min_down_angle < 75:
-                                                if pibo_mode == "friendly":
-                                                    speak_feedback("조금만 덜 앉아 주세요.")
-                                                elif pibo_mode == "spartan":
-                                                    speak_feedback("너무 앉았다 조금 덜 앉아봐")
-                                            elif min_down_angle > 90:
-                                                if pibo_mode == "friendly":
-                                                    speak_feedback("조금만 더 앉아 주세요.")
-                                                elif pibo_mode == "spartan":
-                                                    speak_feedback("그걸로 되겠어? 더 앉아")
+                    
+                                            if min_down_angle is not None:    
+                                                if min_down_angle < 75:
+                                                    if pibo_mode == "friendly":
+                                                        speak_feedback("조금만 덜 앉아 주세요.")
+                                                    elif pibo_mode == "spartan":
+                                                        speak_feedback("너무 앉았다 조금 덜 앉아봐")
+                                                    min_down_angle = None
+                                                elif min_down_angle > 90:
+                                                    if pibo_mode == "friendly":
+                                                        speak_feedback("조금만 더 앉아 주세요.")
+                                                    elif pibo_mode == "spartan":
+                                                        speak_feedback("그걸로 되겠어? 더 앉아")
+                                                    min_down_angle = None
 
                                             if counter >= int(reps_per_set * 0.7) and not feedback_flags["encouraged"]:
                                                 if pibo_mode == "friendly":
@@ -205,6 +207,7 @@ def run_squat(user_id, difficulty):
 
                                     elif avg_angle <= 110:
                                         stage = "down"
+                                        min_down_angle = avg_angle
                                         if min_down_angle is None or avg_angle < min_down_angle:
                                             min_down_angle = avg_angle
                                             
