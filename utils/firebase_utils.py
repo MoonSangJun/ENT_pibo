@@ -53,7 +53,6 @@ def update_workout_score(user_id, workout_type, score, reps, start_time, end_tim
 
     recalculate_statistics(user_id, date)
 
-    # 그룹 통계 업데이트
     for group_id in [user_data.get("group1"), user_data.get("group2")]:
         if group_id:
             recalculate_group_statistics(group_id, date)
@@ -200,7 +199,8 @@ def update_user_settings(user_id, nickname=None, pibo_mode=None, group1=None, gr
     update_data = {}
     if nickname:
         update_data['nickname'] = nickname
-    if pibo_mode in ['soft', 'normal', 'hard']:
+    #수정된 부분(soft, normal, hard -> friendly, spartan)
+    if pibo_mode in ['friendly', 'spartan']:
         update_data['pibo_mode'] = pibo_mode
     if group1:
         update_data['group1'] = group1
@@ -208,7 +208,6 @@ def update_user_settings(user_id, nickname=None, pibo_mode=None, group1=None, gr
         update_data['group2'] = group2
     if difficulty in ['easy', 'normal', 'hard']:
         update_data['difficulty'] = difficulty
-
     if update_data:
         db.collection("users").document(user_id).set(update_data, merge=True)
         return True
@@ -219,6 +218,13 @@ def get_user_difficulty(user_id):
     if not user_doc.exists:
         return "normal"
     return user_doc.to_dict().get("difficulty", "normal")
+
+#get 파이보 모드 추가 
+def get_user_pibo_mode(user_id):
+    user_doc = db.collection("users").document(user_id).get()
+    if not user_doc.exists:
+        return "friendly"
+    return user_doc.to_dict().get("pibo_mode", "friendly")
 
 def get_today_stats(user_id, date):
     stats_doc = db.collection("users").document(user_id).collection("statistics").document("daily").get()
@@ -242,19 +248,15 @@ def listen_to_exercise(user_id, exercise_type):
 def reset_daily_statistics_if_needed(user_id):
     today = datetime.now().strftime("%Y-%m-%d")
 
-    # 1. bench 기록 확인
     bench_ref = db.collection("users").document(user_id).collection("bench").document(today)
     bench_doc = bench_ref.get()
 
-    # 2. squat 기록 확인
     squat_ref = db.collection("users").document(user_id).collection("squat").document(today)
     squat_doc = squat_ref.get()
 
-    # 3. deadlift 기록 확인
     deadlift_ref = db.collection("users").document(user_id).collection("deadlift").document(today)
     deadlift_doc = deadlift_ref.get()
 
-    # 4. 모든 운동이 없으면 초기화 진행
     if not bench_doc.exists and not squat_doc.exists and not deadlift_doc.exists:
         stats_ref = db.collection("users").document(user_id).collection("statistics").document("daily")
         stats_ref.set({
@@ -266,12 +268,11 @@ def reset_daily_statistics_if_needed(user_id):
             "s_time": 0,
             "t_reps": 0,
             "t_time": 0
-        }, merge=True)  # merge=True: 다른 필드는 유지
+        }, merge=True)
 
 def admin_update_all_users_and_groups():
     today_str = datetime.now().strftime("%Y-%m-%d")
 
-    # 🔁 1. 모든 사용자에 대해 통계 최신화
     user_docs = db.collection("users").stream()
     user_ids = []
     for doc in user_docs:
@@ -283,7 +284,6 @@ def admin_update_all_users_and_groups():
         except Exception as e:
             print(f"❌ Failed to update user {user_id}: {e}")
 
-    # 🔁 2. 모든 그룹 ID 수집
     group_ids = set()
     for user_id in user_ids:
         user_data = db.collection("users").document(user_id).get().to_dict()
@@ -293,7 +293,6 @@ def admin_update_all_users_and_groups():
             if user_data.get("group2"):
                 group_ids.add(user_data["group2"])
 
-    # 🔁 3. 모든 그룹 통계 최신화
     for group_id in group_ids:
         try:
             recalculate_group_statistics(group_id, today_str)
