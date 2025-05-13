@@ -2,17 +2,15 @@ import cv2
 import mediapipe as mp
 from datetime import datetime
 from utils.pose_utils import calculate_2d_angle
-#함수 import 추가
 from utils.firebase_utils import update_workout_score, get_user_difficulty, get_user_pibo_mode
 from utils.video_overlay_utils import all_landmarks_visible, draw_info_overlay
 from features.communication.tts_stt import speak_feedback
 
 def run_squat(user_id, difficulty):
-    # Pibo 모드 및 난이도 정보 가져오기
     pibo_mode = get_user_pibo_mode(user_id)
     difficulty = get_user_difficulty(user_id)
     reps_per_set = {"easy": 8, "normal": 12, "hard": 15}.get(difficulty, 12)
-    
+
     cap = cv2.VideoCapture(0)
     counter, set_counter = 0, 0
     total_reps, total_exp = 0, 0
@@ -20,16 +18,21 @@ def run_squat(user_id, difficulty):
     stage = None
     last_score = None
     start_time = datetime.now()
+    exit_pressed_once = False
+    exit_time = None
+
     required_landmarks = [23, 25, 27, 24, 26, 28]
     mp_pose_instance = mp.solutions.pose
 
-    # 피드백 플래그
     feedback_flags = {
         "greeted": False,
         "encouraged": False,
         "suggested_retry": False,
+        "visibility_prompted": False,
+        "stance_prompted": False,
+        "ready_prompted": False
     }
-    
+
     with mp_pose_instance.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
         while cap.isOpened():
             ret, frame = cap.read()
@@ -42,19 +45,48 @@ def run_squat(user_id, difficulty):
             image.flags.writeable = True
             image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
-            # 인삿말 (최초 1회)
             if not feedback_flags["greeted"]:
                 if pibo_mode == "friendly":
                     speak_feedback("스쿼트 시작합니다. 이번 운동도 잘 해낼거에요. 화이팅.")
                 elif pibo_mode == "spartan":
                     speak_feedback("운동 시작이다. 자세 잡아라.")
-                feedback_flags["greeted"] = True 
+                feedback_flags["greeted"] = True
 
             if results.pose_landmarks:
                 landmarks = results.pose_landmarks.landmark
-                ready = all_landmarks_visible(landmarks, required_landmarks)
+                visible = all_landmarks_visible(landmarks, required_landmarks)
 
-                if ready:
+                if not visible:
+                    if not feedback_flags["visibility_prompted"]:
+                        speak_feedback("몸 전체가 화면에 보이도록 서 주세요.")
+                        feedback_flags["visibility_prompted"] = True
+                        feedback_flags["stance_prompted"] = False
+                        feedback_flags["ready_prompted"] = False
+                else:
+                    if not feedback_flags["stance_prompted"]:
+                        try:
+                            # 좌우 발목과 좌우 어깨 간 x 좌표 거리
+                            left_ankle_x = landmarks[27].x
+                            right_ankle_x = landmarks[28].x
+                            left_shoulder_x = landmarks[11].x
+                            right_shoulder_x = landmarks[12].x
+
+                            foot_distance = abs(left_ankle_x - right_ankle_x)
+                            shoulder_width = abs(left_shoulder_x - right_shoulder_x)
+
+                            if foot_distance < shoulder_width:
+                                speak_feedback("다리를 조금 더 벌려 주세요.")
+                            elif foot_distance > shoulder_width * 1.5:
+                                speak_feedback("다리를 너무 벌렸어요. 조금만 좁혀 주세요.")
+                            else:
+                                speak_feedback("좋아요, 준비됐어요! 스쿼트를 시작하세요.")
+                                feedback_flags["ready_prompted"] = True
+                            feedback_flags["stance_prompted"] = True
+                            feedback_flags["visibility_prompted"] = False
+                        except Exception as e:
+                            print("Stance check error:", e)
+
+                if visible:
                     try:
                         left_angle = calculate_2d_angle(
                             [landmarks[23].x, landmarks[23].y],
@@ -70,55 +102,53 @@ def run_squat(user_id, difficulty):
                         accuracy = max(0, 100 - abs(avg_angle - 90))
                         last_score = int(accuracy)
 
-                        # 실시간 자세 피드백
-                        if avg_angle < 100:
-                            speak_feedback("허리를 더 굽히지 마세요!")
-                        elif avg_angle > 160:
-                            speak_feedback("허리를 너무 많이 펴지 마세요!")
+                        # 피드백: 자세 교정
+                        if stage == "down":  # 내려간 상태에서 다시 올라올 때만 피드백
+                            if avg_angle >= 160:
+                                stage = "up"
+                                counter += 1
+                                score_list.append(last_score)
+                                total_reps += 1
+                                total_exp += last_score
 
-                        # 자세 단계 판단
-                        if avg_angle < 100:
+                                if counter >= int(reps_per_set * 0.7) and not feedback_flags["encouraged"]:
+                                    if pibo_mode == "friendly":
+                                        speak_feedback("좋아요! 거의 다 왔어요 조금만 더 힘내세요!")
+                                    elif pibo_mode == "spartan":
+                                        speak_feedback("하나 더! 아직 멀었어!")
+                                    feedback_flags["encouraged"] = True
+
+                                if counter >= reps_per_set:
+                                    avg_score = int(sum(score_list) / len(score_list))
+                                    if pibo_mode == "friendly":
+                                        speak_feedback(f"세트 끝! 수고했어요~ 평균 점수는 {avg_score}점이에요.")
+                                    elif pibo_mode == "spartan":
+                                        speak_feedback(f"세트 완료다. 점수는 {avg_score}점이다. 더 열심히 하도록!")
+                                    set_counter += 1
+                                    counter = 0
+                                    score_list = []
+                                    stage = None
+                                    feedback_flags["encouraged"] = False
+
+                        elif avg_angle <= 110:
                             stage = "down"
-                        elif avg_angle > 160 and stage == "down":
-                            stage = "up"
-                            counter += 1
-                            score_list.append(last_score)
-                            total_reps += 1
-                            total_exp += last_score
+                            # down 상태일 때 자세 피드백 제공
+                            if avg_angle < 75:
+                                speak_feedback("조금만 덜 앉아 주세요.")
+                            elif avg_angle > 90:
+                                speak_feedback("조금 더 앉아 주세요.")
 
-                            # 세트 후반부 응원
-                            if counter >= int(reps_per_set * 0.7) and not feedback_flags["encouraged"]:
-                                if pibo_mode == "friendly":
-                                    speak_feedback("좋아요! 거의 다 왔어요 조금만 더 힘내세요!")
-                                elif pibo_mode == "spartan":
-                                    speak_feedback("하나 더! 아직 멀었어!")
-                                feedback_flags["encouraged"] = True
-
-                            # 세트 완료 시
-                            if counter >= reps_per_set:
-                                avg_score = int(sum(score_list) / len(score_list))
-                                if pibo_mode == "friendly":
-                                    speak_feedback(f"세트 끝! 수고했어요~ 평균 점수는 {avg_score}점이에요.")
-                                elif pibo_mode == "spartan":
-                                    speak_feedback(f"세트 완료다. 점수는 {avg_score}점이다. 더 열심히 하도록!")
-                                set_counter += 1
-                                counter = 0
-                                score_list = []
-                                stage = None
-                                feedback_flags["encouraged"] = False  # 다음 세트용 리셋
                     except Exception as e:
                         print(e)
 
-                image = draw_info_overlay(image, counter, set_counter, last_score, ready)
+                image = draw_info_overlay(image, counter, set_counter, last_score, visible)
                 mp.solutions.drawing_utils.draw_landmarks(image, results.pose_landmarks, mp_pose_instance.POSE_CONNECTIONS)
             else:
                 image = draw_info_overlay(image, counter, set_counter, last_score, False)
 
             cv2.imshow("Squat Tracker", image)
-
             key = cv2.waitKey(10) & 0xFF
-            
-            # 테스트용 강제 카운트
+
             if key == ord(' '):
                 counter += 1
                 score_list.append(100)
@@ -131,20 +161,19 @@ def run_squat(user_id, difficulty):
                     if pibo_mode == "friendly":
                         speak_feedback(f"세트 끝! 수고했어요~ 평균 점수는 {avg_score}점입니다.")
                     elif pibo_mode == "spartan":
-                        speak_feedback(f"세트 완료다. 점수는 {avg_score}점이다.")
+                        speak_feedback(f"세트 완료다. 평균 점수는 {avg_score}점이다.")
                     set_counter += 1
                     counter = 0
                     score_list = []
                     stage = None
                     feedback_flags["encouraged"] = False
 
-            # 종료 로직
             if key == ord('q'):
                 if not exit_pressed_once:
                     if pibo_mode == "friendly":
                         speak_feedback("정말 종료하시겠어요? 한세트 더 해보는건 어떨까요?.")
                     elif pibo_mode == "spartan":
-                        speak_feedback("고작 이걸로 운동 끝내게 다시 원위치해")
+                        speak_feedback("고작 이걸로 운동 끝내게? 다시 원위치해")
                     exit_pressed_once = True
                     exit_time = datetime.now()
                 elif (datetime.now() - exit_time).total_seconds() <= 3:
@@ -154,12 +183,14 @@ def run_squat(user_id, difficulty):
                         speak_feedback("운동 끝났다. 가도 좋다.")
                     if total_reps > 0:
                         end_time = datetime.now()
-                        update_workout_score(user_id=user_id,
-                                            workout_type="squat",
-                                            score=total_exp,
-                                            reps=total_reps,
-                                            start_time=start_time,
-                                            end_time=end_time)
+                        update_workout_score(
+                            user_id=user_id,
+                            workout_type="squat",
+                            score=total_exp,
+                            reps=total_reps,
+                            start_time=start_time,
+                            end_time=end_time
+                        )
                     break
 
     cap.release()
