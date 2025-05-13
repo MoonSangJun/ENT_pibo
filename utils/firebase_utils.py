@@ -219,7 +219,6 @@ def get_user_difficulty(user_id):
         return "normal"
     return user_doc.to_dict().get("difficulty", "normal")
 
-#get 파이보 모드 추가 
 def get_user_pibo_mode(user_id):
     user_doc = db.collection("users").document(user_id).get()
     if not user_doc.exists:
