@@ -8,7 +8,8 @@ from features.motivation.quests.dailyquest import create_daily_quest
 
 def number_to_level(num, field_type):
     mappings = {
-        "pibo_mode": {"1": "soft", "2": "normal", "3": "hard"},
+        #수정된 부분(soft, normal, hard -> friendly, spartan)
+        "pibo_mode": {"1": "friendly", "2": "spartan"}, 
         "difficulty": {"1": "easy", "2": "normal", "3": "hard"}
     }
     return mappings.get(field_type, {}).get(num)
@@ -25,7 +26,8 @@ def settings_menu(user_id):
     while True:
         print("\n[유저 설정]")
         print("1. 닉네임 변경")
-        print("2. 파이보 모드 설정 [1: soft, 2: normal, 3: hard]")
+        #수정된 부분(soft, normal, hard -> friendly, spartan)
+        print("2. 파이보 모드 설정 [1: friendly, 2: spartan]")
         print("3. 그룹1 설정")
         print("4. 그룹2 설정")
         print("5. 난이도 설정 [1: easy, 2: normal, 3: hard]")
@@ -44,7 +46,8 @@ def settings_menu(user_id):
                     print(f"✅ 닉네임이 '{new}'로 설정되었습니다.")
         elif choice == "2":
             prev = get_user_field(user_id, "pibo_mode")
-            print("파이보 모드 [1: soft, 2: normal, 3: hard]")
+            #수정된 부분(soft, normal, hard -> friendly, spartan)
+            print("파이보 모드 [1: friendly, 2: spartan]")
             selected = input("숫자를 입력하세요: ").strip()
             mode = number_to_level(selected, "pibo_mode")
             if mode:

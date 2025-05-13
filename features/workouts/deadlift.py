@@ -1,53 +1,17 @@
 import cv2
 import mediapipe as mp
-import threading
 from datetime import datetime
 from utils.pose_utils import calculate_2d_angle
-from utils.firebase_utils import update_workout_score
-from utils.firebase_utils import get_user_difficulty
+from utils.firebase_utils import update_workout_score, get_user_difficulty, get_user_pibo_mode
 from utils.video_overlay_utils import all_landmarks_visible, draw_info_overlay
-from features.video.camera_receive import get_frame_from_pibo
-from features.communication.tts_sender import send_feedback_signal_to_pibo
-from features.communication.tts_stt_mac import speak 
-from features.communication.send_montion_pibo import send_motion_command
-import speech_recognition as sr
-
-
-def monitor_for_stop():
-    """ 음성으로 '종료'를 감지하는 스레드 함수 """
-    global stop_exercise
-    recognizer = sr.Recognizer()
-    mic = sr.Microphone()
-
-    with mic as source:
-        recognizer.adjust_for_ambient_noise(source)
-        print("[음성 감지] '종료' 명령 대기 중...")
-
-    while not stop_exercise:
-        with mic as source:
-            try:
-                audio = recognizer.listen(source, timeout=1, phrase_time_limit=3)
-                command = recognizer.recognize_google(audio, language="ko-KR")
-                print(f"[음성 인식 결과] {command}")
-
-                if "종료" in command:
-                    print("[종료 감지] 운동 종료를 시작합니다.")
-                    stop_exercise = True
-                    break
-
-            except Exception:
-                continue
-
+from features.communication.tts_stt import speak_feedback
 
 def run_deadlift(user_id, difficulty):
-    global stop_exercise
-    stop_exercise = False 
-
-    threading.Thread(target=monitor_for_stop, daemon=True).start()
-
-
+    pibo_mode = get_user_pibo_mode(user_id)
     difficulty = get_user_difficulty(user_id)
     reps_per_set = {"easy": 8, "normal": 12, "hard": 15}.get(difficulty, 12)
+
+    cap = cv2.VideoCapture(1)
     counter, set_counter = 0, 0
     total_reps, total_exp = 0, 0
     score_list = []
@@ -57,14 +21,19 @@ def run_deadlift(user_id, difficulty):
     required_landmarks = [23, 25, 27, 24, 26, 28]
     mp_pose_instance = mp.solutions.pose
 
-    frame_generator = get_frame_from_pibo()
+    feedback_flags = {
+        "greeted": False,
+        "encouraged": False,
+        "suggested_retry": False,
+    }
+    exit_pressed_once = False
+    exit_time = None
 
     with mp_pose_instance.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
-        for frame in frame_generator:
-            if stop_exercise:
-                print("[운동 강제 종료 감지]")
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
                 break
-
 
             frame = cv2.flip(frame, 1)
             image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -72,6 +41,14 @@ def run_deadlift(user_id, difficulty):
             results = pose.process(image)
             image.flags.writeable = True
             image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+
+            # 인삿말
+            if not feedback_flags["greeted"]:
+                if pibo_mode == "friendly":
+                    speak_feedback("데드리프트를 시작합니다. 준비되셨나요?")
+                elif pibo_mode == "spartan":
+                    speak_feedback("운동 시작이다. 자세 잡아라.")
+                feedback_flags["greeted"] = True    
 
             if results.pose_landmarks:
                 landmarks = results.pose_landmarks.landmark
@@ -93,6 +70,19 @@ def run_deadlift(user_id, difficulty):
                         accuracy = max(0, 100 - abs(avg_angle - 180))
                         last_score = int(accuracy)
 
+                        # 실시간 자세 피드백
+                        if avg_angle < 130:
+                            if pibo_mode == "friendly":
+                                speak_feedback("허리를 살짝만 더 펴볼까요?")
+                            elif pibo_mode == "spartan":
+                                speak_feedback("허리 펴! 자세 흐트러졌어!")
+                        elif avg_angle > 190:
+                            if pibo_mode == "friendly":
+                                speak_feedback("조금만 덜 젖혀도 좋아요!")
+                            elif pibo_mode == "spartan":
+                                speak_feedback("뒤로 젖히지 마! 중심 잡아!")
+
+                        # 자세 단계 판단
                         if avg_angle < 100:
                             stage = "down"
                         elif avg_angle > 170 and stage == "down":
@@ -102,13 +92,27 @@ def run_deadlift(user_id, difficulty):
                             total_reps += 1
                             total_exp += last_score
 
+                            # 세트 후반부 응원
+                            if counter >= int(reps_per_set * 0.7) and not feedback_flags["encouraged"]:
+                                if pibo_mode == "friendly":
+                                    speak_feedback("좋아요! 조금만 더 힘내세요!")
+                                elif pibo_mode == "spartan":
+                                    speak_feedback("더 열심히 해! 아직 멀었어!")
+                                feedback_flags["encouraged"] = True
+
+                            # 세트 완료 시
                             if counter >= reps_per_set:
                                 avg_score = int(sum(score_list) / len(score_list))
-                                speak(f"세트 완료! 평균 점수는 {avg_score}점입니다.")
+                                if pibo_mode == "friendly":
+                                    speak_feedback(f"세트 끝! 수고했어요~ 평균 점수는 {avg_score}점입니다.")
+                                elif pibo_mode == "spartan":
+                                    speak_feedback(f"세트 완료다. 점수는 {avg_score}점이다.")
                                 set_counter += 1
                                 counter = 0
                                 score_list = []
                                 stage = None
+                                feedback_flags["encouraged"] = False
+
                     except Exception as e:
                         print(e)
 
@@ -120,7 +124,9 @@ def run_deadlift(user_id, difficulty):
             cv2.imshow("Deadlift Tracker", image)
 
             key = cv2.waitKey(10) & 0xFF
-            if key == ord(' '):  # 수동 디버그
+
+            # 테스트용 강제 카운트
+            if key == ord(' '):
                 counter += 1
                 score_list.append(100)
                 last_score = 100
@@ -129,22 +135,41 @@ def run_deadlift(user_id, difficulty):
 
                 if counter >= reps_per_set:
                     avg_score = int(sum(score_list) / len(score_list))
-                    speak_feedback(f"세트 완료! 평균 점수는 {avg_score}점입니다.")
+                    if pibo_mode == "friendly":
+                        speak_feedback(f"세트 끝! 수고했어요~ 평균 점수는 {avg_score}점입니다.")
+                    elif pibo_mode == "spartan":
+                        speak_feedback(f"세트 완료다. 점수는 {avg_score}점이다.")
                     set_counter += 1
                     counter = 0
                     score_list = []
                     stage = None
-                    
+                    feedback_flags["encouraged"] = False
+
+            # 종료 로직
             if key == ord('q'):
-                end_time = datetime.now()
-                if total_reps > 0:
-                    update_workout_score(user_id=user_id,
-                                         workout_type="deadlift",
-                                         score=total_exp,
-                                         reps=total_reps,
-                                         start_time=start_time,
-                                         end_time=end_time)
-                break
+                if not exit_pressed_once:
+                    if pibo_mode == "friendly":
+                        speak_feedback("정말 종료하시겠어요? 한 번 더 누르면 종료합니다.")
+                    elif pibo_mode == "spartan":
+                        speak_feedback("끝낼 거면 다시 눌러라.")
+                    exit_pressed_once = True
+                    exit_time = datetime.now()
+                elif (datetime.now() - exit_time).total_seconds() <= 3:
+                    if pibo_mode == "friendly":
+                        speak_feedback("수고하셨습니다! 운동을 종료합니다.")
+                    elif pibo_mode == "spartan":
+                        speak_feedback("운동 끝났다. 나가도 좋다.")
+                    if total_reps > 0:
+                        end_time = datetime.now()
+                        update_workout_score(
+                            user_id=user_id,
+                            workout_type="deadlift",
+                            score=total_exp,
+                            reps=total_reps,
+                            start_time=start_time,
+                            end_time=end_time
+                        )
+                    break
 
-
+    cap.release()
     cv2.destroyAllWindows()
