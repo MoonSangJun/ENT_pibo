@@ -531,7 +531,7 @@ import threading
 from datetime import datetime
 from utils.pose_utils import calculate_2d_angle
 from utils.firebase_utils import update_workout_score
-from utils.firebase_utils import get_user_difficulty
+from utils.firebase_utils import get_user_difficulty,get_user_pibo_mode
 from utils.video_overlay_utils import all_landmarks_visible, draw_info_overlay
 from features.video.camera_receive import get_frame_from_pibo
 from features.communication.tts_sender import send_feedback_signal_to_pibo
@@ -575,6 +575,10 @@ def run_squat(user_id, difficulty):
     global stop_exercise
     stop_exercise = False 
 
+    pibo_mode = get_user_pibo_mode(user_id)
+    difficulty = get_user_difficulty(user_id)
+    reps_per_set = {"easy": 8, "normal": 12, "hard": 15}.get(difficulty, 12)
+
     threading.Thread(target=monitor_for_stop, daemon=True).start()
 
 
@@ -584,10 +588,21 @@ def run_squat(user_id, difficulty):
     total_reps, total_exp = 0, 0
     score_list = []
     stage = None
+    min_down_angle = None
+    last_feedback = None
     last_score = None
     start_time = datetime.now()
     required_landmarks = [23, 25, 27, 24, 26, 28]
     mp_pose_instance = mp.solutions.pose
+
+    feedback_flags = {
+        "greeted": False,
+        "encouraged": False,
+        "visibility_prompted": False,
+        "stance_prompted": False,
+        "ready_prompted": False
+    }
+
 
     frame_generator = get_frame_from_pibo()
 
@@ -595,6 +610,7 @@ def run_squat(user_id, difficulty):
         for frame in frame_generator:
             if stop_exercise:
                 print("[운동 강제 종료 감지]")
+                speak("스쿼트 운동을 종료 합니다")
                 break
             #ret, frame = cap.read()
             # if not ret:
@@ -607,49 +623,252 @@ def run_squat(user_id, difficulty):
             image.flags.writeable = True
             image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
+            if not feedback_flags["greeted"]:
+                if pibo_mode == "friendly":
+                    speak("스쿼트 시작합니다. 이번 운동도 잘 해낼거에요. 화이팅.")
+                elif pibo_mode == "spartan":
+                    speak("운동 시작이다. 자세 잡아라.")
+                feedback_flags["greeted"] = True
+
             if results.pose_landmarks:
                 landmarks = results.pose_landmarks.landmark
-                ready = all_landmarks_visible(landmarks, required_landmarks)
+                visible = all_landmarks_visible(landmarks, required_landmarks)
 
-                if ready:
-                    try:
-                        left_angle = calculate_2d_angle(
-                            [landmarks[23].x, landmarks[23].y],
-                            [landmarks[25].x, landmarks[25].y],
-                            [landmarks[27].x, landmarks[27].y]
-                        )
-                        right_angle = calculate_2d_angle(
-                            [landmarks[24].x, landmarks[24].y],
-                            [landmarks[26].x, landmarks[26].y],
-                            [landmarks[28].x, landmarks[28].y]
-                        )
-                        avg_angle = (left_angle + right_angle) / 2
-                        accuracy = max(0, 100 - abs(avg_angle - 90))
-                        last_score = int(accuracy)
+                if not visible:
+                    if not feedback_flags["visibility_prompted"]:
+                        if pibo_mode == "friendly":
+                            speak("몸 전체가 화면에 보이도록 서 주세요.")
+                        elif pibo_mode == "spartan":
+                            speak("화면에 신체가 다 보이게 서")
+                        feedback_flags["visibility_prompted"] = True
+                        feedback_flags["stance_prompted"] = False
+                        feedback_flags["ready_prompted"] = False
+                
+                if visible:
+                    if not feedback_flags["stance_prompted"] or not feedback_flags["ready_prompted"]:
+                        feedback_flags["visibility_prompted"] = False
+                        try:
+                            left_ankle_x = landmarks[27].x
+                            right_ankle_x = landmarks[28].x
+                            left_shoulder_x = landmarks[11].x
+                            right_shoulder_x = landmarks[12].x
 
-                        if avg_angle < 100:
-                            stage = "down"
-                        elif avg_angle > 160 and stage == "down":
-                            stage = "up"
-                            counter += 1
-                            score_list.append(last_score)
-                            total_reps += 1
-                            total_exp += last_score
+                            # foot_distance = abs(left_ankle_x - right_ankle_x)
+                            # shoulder_width = abs(left_shoulder_x - right_shoulder_x)
 
-                            if counter >= reps_per_set:
-                                avg_score = int(sum(score_list) / len(score_list))
-                                speak(f"세트 완료! 평균 점수는 {avg_score}점입니다.")
-                                set_counter += 1
-                                counter = 0
-                                score_list = []
-                                stage = None
-                    except Exception as e:
-                        print(e)
+                            # if foot_distance < shoulder_width * 0.5:
+                            #     if pibo_mode == "friendly":
+                            #         speak("다리를 조금 더 벌려 주세요.")
+                            #     elif pibo_mode == "spartan":
+                            #         speak("다리 더 벌리자")
+                            #     feedback_flags["ready_prompted"] = False
+                            # elif foot_distance > shoulder_width * 2:
+                            #     if pibo_mode == "friendly":
+                            #         speak("다리 간격을 좁혀주세요")
+                            #     elif pibo_mode == "spartan":
+                            #         speak("다리 오므리자")
+                            #     feedback_flags["ready_prompted"] = False
+                            # else:
+                            if not feedback_flags["ready_prompted"]:
+                                if pibo_mode == "friendly":
+                                    speak("좋아요, 준비됐어요! 스쿼트를 시작하세요.")
+                                elif pibo_mode == "spartan":
+                                    speak("자 이제 스쿼트 시작!")
+                                feedback_flags["ready_prompted"] = True
+                                
+                            try:
+                                left_angle = calculate_2d_angle(
+                                    [landmarks[23].x, landmarks[23].y],
+                                    [landmarks[25].x, landmarks[25].y],
+                                    [landmarks[27].x, landmarks[27].y]
+                                )
+                                right_angle = calculate_2d_angle(
+                                    [landmarks[24].x, landmarks[24].y],
+                                    [landmarks[26].x, landmarks[26].y],
+                                    [landmarks[28].x, landmarks[28].y]
+                                )
+                                avg_angle = (left_angle + right_angle) / 2
+                                accuracy = max(0, 100 - abs(avg_angle - 90))
+                                last_score = int(accuracy)
 
-                image = draw_info_overlay(image, counter, set_counter, last_score, ready)
+
+                                # 내려간 상태에서 다시 올라올 때 피드백 처리
+                                if stage == "down" and avg_angle >= 130:
+                                    stage = "up"
+                                    counter += 1
+                                    speak(f"{counter}회")
+                                    score_list.append(last_score)
+                                    total_reps += 1
+                                    total_exp += last_score
+
+                                    # 자세 피드백
+                                    if min_down_angle is not None:
+                                        print("🦵 최소 앉은 각도:", min_down_angle)
+
+                                        if min_down_angle < 75:
+                                            if pibo_mode == "friendly":
+                                                speak("조금만 덜 앉아 주세요.")
+                                            else:
+                                                speak("너무 앉았다. 조금 덜 앉아봐.")
+                                        elif min_down_angle > 95:
+                                            if pibo_mode == "friendly":
+                                                speak("조금만 더 앉아 주세요.")
+                                            else:
+                                                speak("그걸로 되겠어? 더 앉아.")
+                                        else:
+                                            if pibo_mode == "friendly":
+                                                speak("좋아요! 정확한 자세였어요.")
+                                            else:
+                                                speak("좋다. 이 정도면 합격이다.")
+                                        min_down_angle = None
+
+                                    # 중간 응원 피드백
+                                    if counter >= int(reps_per_set * 0.7) and not feedback_flags["encouraged"]:
+                                        if pibo_mode == "friendly":
+                                            speak("좋아요! 거의 다 왔어요. 조금만 더 힘내세요!")
+                                        else:
+                                            speak("하나 더! 아직 멀었어!")
+                                        feedback_flags["encouraged"] = True
+
+                                    # 세트 완료
+                                    if counter >= reps_per_set:
+                                        avg_score = int(sum(score_list) / len(score_list))
+                                        if pibo_mode == "friendly":
+                                            speak(f"세트 끝! 수고했어요~ 평균 점수는 {avg_score}점이에요.")
+                                        else:
+                                            speak(f"세트 완료다. 점수는 {avg_score}점이다. 더 열심히 하도록!")
+                                        set_counter += 1
+                                        counter = 0
+                                        score_list = []
+                                        stage = None
+                                        feedback_flags["encouraged"] = False
+
+                                # 내려가는 동작 감지
+                                elif avg_angle <= 120:
+                                    if stage != "down":
+                                        stage = "down"
+                                        min_down_angle = avg_angle
+                                    else:
+                                        if avg_angle < min_down_angle:
+                                            min_down_angle = avg_angle
+
+
+
+
+                                # 피드백: 자세 교정
+                                # if stage == "down":  # 내려간 상태에서 다시 올라올 때만 피드백
+                                    
+                                #     print("avg_angle:", avg_angle)
+                                    
+                                #     if avg_angle >= 160:
+                                #         stage = "up"
+                                #         counter += 1
+                                #         speak(f"{counter}회")
+                                #         score_list.append(last_score)
+                                #         total_reps += 1
+                                #         total_exp += last_score
+                                        
+                                     
+                
+                                #         if min_down_angle is not None:    
+                                #             if min_down_angle < 75:
+                                #                 if pibo_mode == "friendly":
+                                #                     speak("조금만 덜 앉아 주세요.")
+                                #                 elif pibo_mode == "spartan":
+                                #                     speak("너무 앉았다 조금 덜 앉아봐")
+                                #                 min_down_angle = None
+                                #             elif min_down_angle > 90:
+                                #                 if pibo_mode == "friendly":
+                                #                     speak("조금만 더 앉아 주세요.")
+                                #                 elif pibo_mode == "spartan":
+                                #                     speak("그걸로 되겠어? 더 앉아")
+                                #             min_down_angle = None
+
+                                #         if counter >= int(reps_per_set * 0.7) and not feedback_flags["encouraged"]:
+                                #             if pibo_mode == "friendly":
+                                #                 speak("좋아요! 거의 다 왔어요 조금만 더 힘내세요!")
+                                #             elif pibo_mode == "spartan":
+                                #                 speak("하나 더! 아직 멀었어!")
+                                #             feedback_flags["encouraged"] = True
+
+                                #         if counter >= reps_per_set:
+                                #             avg_score = int(sum(score_list) / len(score_list))
+                                #             if pibo_mode == "friendly":
+                                #                 speak("세트 끝! 수고했어요~ 평균 점수는 {avg_score}점이에요.")
+                                #             elif pibo_mode == "spartan":
+                                #                 speak("세트 완료다. 점수는 {avg_score}점이다. 더 열심히 하도록!")
+                                #             set_counter += 1
+                                #             counter = 0
+                                #             score_list = []
+                                #             stage = None
+                                #             feedback_flags["encouraged"] = False
+
+                                # elif avg_angle <= 110:
+                                #     stage = "down"
+                                #     min_down_angle = 110
+                                #     if avg_angle < min_down_angle:
+                                #         min_down_angle = avg_angle
+                
+                                        
+                            except Exception as e:
+                                print(e)        
+                            
+                        except Exception as e:
+                            print("Stance check error:", e)
+
+                image = draw_info_overlay(image, counter, set_counter, last_score, visible)
                 mp.solutions.drawing_utils.draw_landmarks(image, results.pose_landmarks, mp_pose_instance.POSE_CONNECTIONS)
             else:
                 image = draw_info_overlay(image, counter, set_counter, last_score, False)
+
+
+
+
+
+
+            # if results.pose_landmarks:
+            #     landmarks = results.pose_landmarks.landmark
+            #     ready = all_landmarks_visible(landmarks, required_landmarks)
+
+            #     if ready:
+            #         try:
+            #             left_angle = calculate_2d_angle(
+            #                 [landmarks[23].x, landmarks[23].y],
+            #                 [landmarks[25].x, landmarks[25].y],
+            #                 [landmarks[27].x, landmarks[27].y]
+            #             )
+            #             right_angle = calculate_2d_angle(
+            #                 [landmarks[24].x, landmarks[24].y],
+            #                 [landmarks[26].x, landmarks[26].y],
+            #                 [landmarks[28].x, landmarks[28].y]
+            #             )
+            #             avg_angle = (left_angle + right_angle) / 2
+            #             accuracy = max(0, 100 - abs(avg_angle - 90))
+            #             last_score = int(accuracy)
+
+            #             if avg_angle < 100:
+            #                 stage = "down"
+            #             elif avg_angle > 160 and stage == "down":
+            #                 stage = "up"
+            #                 counter += 1
+            #                 score_list.append(last_score)
+            #                 total_reps += 1
+            #                 total_exp += last_score
+
+            #                 if counter >= reps_per_set:
+            #                     avg_score = int(sum(score_list) / len(score_list))
+            #                     speak(f"세트 완료! 평균 점수는 {avg_score}점입니다.")
+            #                     set_counter += 1
+            #                     counter = 0
+            #                     score_list = []
+            #                     stage = None
+            #         except Exception as e:
+            #             print(e)
+
+            #     image = draw_info_overlay(image, counter, set_counter, last_score, ready)
+            #     mp.solutions.drawing_utils.draw_landmarks(image, results.pose_landmarks, mp_pose_instance.POSE_CONNECTIONS)
+            # else:
+            #     image = draw_info_overlay(image, counter, set_counter, last_score, False)
 
             cv2.imshow("Squat Tracker", image)
 
@@ -663,7 +882,7 @@ def run_squat(user_id, difficulty):
 
                 if counter >= reps_per_set:
                     avg_score = int(sum(score_list) / len(score_list))
-                    speak_feedback(f"세트 완료! 평균 점수는 {avg_score}점입니다.")
+                    speak(f"세트 완료! 평균 점수는 {avg_score}점입니다.")
                     set_counter += 1
                     counter = 0
                     score_list = []

@@ -10,6 +10,7 @@ from features.communication.tts_stt_mac import speak
 from features.communication.send_montion_pibo import send_motion_command
 from utils.listen import listen_to_question
 from utils.chatgpt import ask_gpt, speak_text
+import time
 
 
 
@@ -32,7 +33,7 @@ def settings_menu(user_id):
     while True:
         print("\n[유저 설정]")
         print("1. 닉네임 변경")
-        print("2. 파이보 모드 설정 [1: soft, 2: normal, 3: hard]")
+        print("2. 파이보 모드 설정 [1: friendly, 2: spartan]")
         print("3. 그룹1 설정")
         print("4. 그룹2 설정")
         print("5. 난이도 설정 [1: easy, 2: normal, 3: hard]")
@@ -51,7 +52,7 @@ def settings_menu(user_id):
                     print(f"✅ 닉네임이 '{new}'로 설정되었습니다.")
         elif choice == "2":
             prev = get_user_field(user_id, "pibo_mode")
-            print("파이보 모드 [1: soft, 2: normal, 3: hard]")
+            print("파이보 모드 [1: friendly, 2: spartan]")
             selected = input("숫자를 입력하세요: ").strip()
             mode = number_to_level(selected, "pibo_mode")
             if mode:
@@ -104,40 +105,46 @@ def exercise_menu(user_id):
     create_daily_quest(user_id)
     difficulty = get_user_difficulty(user_id)
 
-    send_motion_command("m_wakeup")
+    send_motion_command("login")
     speak("로그인 되었습니다!!")
     print("\n🎤 음성 모드 시작합니다!")
-    print(" - '안녕' 이라고 부르면 대화 시작")
-    speak("안녕' 이라고 부르면 대화가 시작되고, 스쿼트, 벤치프레스, 데드리프트 중 하나를 말하면 운동을 시작합니다.")
+    print(" - '대화하기' 라고 말하면 대화 시작")
+    speak("대화하기' 라고 말하면 대화가 시작되고, 스쿼트, 벤치프레스, 데드리프트 중 하나를 말하면 운동을 시작합니다.")
     print(" - '스쿼트', '벤치프레스', '데드리프트' 를 말하면 운동 시작\n")
 
     while True:
-        text = listen_to_question(timeout=3, phrase_time_limit=3)
-        choice = input("번호를 입력하세요: ")
+        text = listen_to_question(timeout=5, phrase_time_limit=7)
 
         if text is None:
             continue
 
-        if "안녕" in text or choice == 1:
+        if "대화하기" in text:
             print("🧠 GPT 대화 모드 시작!")
+
+            time.sleep(2.5)
             speak("안녕하세요! 무엇이든지 말씀해주세요!")
             question = listen_to_question(timeout=7, phrase_time_limit=10)
             if question:
                 answer = ask_gpt(question)
-                #send_tts(answer)
-                speak_text(answer)
+                #send_tts(answer)2
+                send_motion_command("dance1")
+                speak(answer)
+                
 
-        elif "스쿼트" in text or choice == 2:
+                #speak_text(answer)
+
+        elif "스쿼트" in text:
+            send_motion_command("m_explain_A")
             speak("스쿼트 운동을 시작합니다!")
             print("🏋️ 스쿼트 감지 시작합니다!")
             run_squat(user_id, difficulty)
 
-        elif "벤치프레스" or "벤치 프레스" in text:
+        elif "벤치프레스" in text or "벤치 프레스" in text:
             speak("벤치프레스 운동을 시작합니다.")
             print("🏋️ 벤치프레스 감지 시작합니다!")
             run_bench(user_id, difficulty)
 
-        elif "데드 리프트" or "데드리프트" in text:
+        elif "데드 리프트" in text or "데드리프트" in text:
             speak("데드리프트 운동을 시작합니다")
             print("🏋️ 데드리프트 감지 시작합니다!")
             run_deadlift(user_id, difficulty)

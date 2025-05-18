@@ -3,7 +3,7 @@ import socket
 import struct
 
 TTS_PORT = 8585
-PIBO_IP = '192.168.0.3'  # 파이보 IP
+PIBO_IP = '192.168.247.22'  # 파이보 IP
 
 def send_feedback_signal_to_pibo(feedback_text):
     try:

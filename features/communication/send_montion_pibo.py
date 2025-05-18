@@ -2,7 +2,7 @@ import socket
 import struct
 
 def send_motion_command(motion_name):
-    HOST = '192.168.0.3'  # 예: 192.168.0.5
+    HOST = '192.168.247.22'  # 예: 192.168.0.5
     PORT = 8787  # 모션 수신 전용 포트
 
     try:

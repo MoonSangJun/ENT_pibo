@@ -15,7 +15,7 @@ import os
 import tempfile
 import platform
 
-async def _edge_speak(text: str, lang: str = "ko-KR", voice: str = "ko-KR-InJoonNeural", rate: str = "+0%"):
+async def _edge_speak(text: str, lang: str = "ko-KR", voice: str = "ko-KR-InJoonNeural", rate: str = "+3%"):
     try:
         # 임시 mp3 파일 생성
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
