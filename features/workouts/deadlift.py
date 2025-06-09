@@ -1,27 +1,79 @@
 import cv2
 import mediapipe as mp
+import threading
 from datetime import datetime
+import speech_recognition as sr
 from utils.pose_utils import calculate_2d_angle
 from utils.firebase_utils import update_workout_score, get_user_difficulty, get_user_pibo_mode
 from utils.video_overlay_utils import all_landmarks_visible, draw_info_overlay
-from features.communication.tts_stt import speak_feedback
+from features.video.camera_receive import get_frame_from_pibo
+from features.communication.tts_stt_mac import speak
+
+stop_exercise = False
+
+def monitor_for_stop():
+    global stop_exercise
+    recognizer = sr.Recognizer()
+    mic = sr.Microphone()
+
+    print("[음성 감지] '종료' 명령 대기 중...")
+
+    while not stop_exercise:
+        with mic as source:
+            try:
+                recognizer.adjust_for_ambient_noise(source, duration=0.5) 
+                audio = recognizer.listen(source, timeout=1, phrase_time_limit=3)
+                command = recognizer.recognize_google(audio, language="ko-KR")
+                print(f"[음성 인식 결과] {command}")
+
+                if "종료" in command:
+                    print("[종료 감지] 운동 종료를 시작합니다.")
+                    stop_exercise = True
+                    break
+
+            except sr.WaitTimeoutError:
+                pass 
+            except sr.UnknownValueError:
+                pass
+            except sr.RequestError as e:
+                print(f"[음성 인식 오류] 서비스 문제: {e}")
+            except Exception as e:
+                print(f"[예외 발생] 음성 감지 중 오류: {e}")
+                continue
 
 def run_deadlift(user_id, difficulty):
-    pibo_mode = get_user_pibo_mode(user_id)
-    difficulty = get_user_difficulty(user_id)
-    reps_per_set = {"easy": 8, "normal": 12, "hard": 15}.get(difficulty, 12)
+    global stop_exercise
+    stop_exercise = False
 
-    cap = cv2.VideoCapture(1)
+    threading.Thread(target=monitor_for_stop, daemon=True).start()
+
+    pibo_mode = get_user_pibo_mode(user_id)
+    firebase_difficulty = get_user_difficulty(user_id) 
+    reps_per_set = {"easy": 8, "normal": 12, "hard": 15}.get(firebase_difficulty, 12)
+
     counter, set_counter = 0, 0
     total_reps, total_exp = 0, 0
     score_list = []
     stage = None
-    last_score = None
     min_down_angle = None
+    last_feedback = None
+    last_score = None
     start_time = datetime.now()
-    exit_pressed_once = False
-    required_landmarks = [23, 25, 27, 24, 26, 28, 15, 16]
+    
+    hand_below_knee_valid = False
+    hand_above_knee_valid = False
+
     mp_pose_instance = mp.solutions.pose
+    required_landmarks = [
+        mp_pose_instance.PoseLandmark.LEFT_HIP.value,
+        mp_pose_instance.PoseLandmark.LEFT_KNEE.value,
+        mp_pose_instance.PoseLandmark.LEFT_ANKLE.value,
+        mp_pose_instance.PoseLandmark.RIGHT_HIP.value,
+        mp_pose_instance.PoseLandmark.RIGHT_KNEE.value,
+        mp_pose_instance.PoseLandmark.RIGHT_ANKLE.value,
+        mp_pose_instance.PoseLandmark.LEFT_WRIST.value,
+        mp_pose_instance.PoseLandmark.RIGHT_WRIST.value
+    ]
 
     feedback_flags = {
         "greeted": False,
@@ -30,11 +82,15 @@ def run_deadlift(user_id, difficulty):
         "ready_prompted": False
     }
 
+    frame_generator = get_frame_from_pibo()
+
     with mp_pose_instance.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
+        for frame in frame_generator:
+            if stop_exercise:
+                print("[운동 강제 종료 감지]")
+                speak("데드리프트 운동을 종료합니다.")
                 break
+
             frame = cv2.flip(frame, 1)
             image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             image.flags.writeable = False
@@ -44,10 +100,10 @@ def run_deadlift(user_id, difficulty):
 
             if not feedback_flags["greeted"]:
                 if pibo_mode == "friendly":
-                    speak_feedback("데드리프트 시작합니다. 이번 운동도 잘 해낼거에요. 화이팅.")
+                    speak("데드리프트 시작합니다. 이번 운동도 잘 해낼 거예요. 화이팅!")
                 elif pibo_mode == "spartan":
-                    speak_feedback("운동 시작이다. 자세 잡아라.")
-                feedback_flags["greeted"] = True    
+                    speak("운동 시작이다. 자세 잡아라.")
+                feedback_flags["greeted"] = True
 
             if results.pose_landmarks:
                 landmarks = results.pose_landmarks.landmark
@@ -56,166 +112,171 @@ def run_deadlift(user_id, difficulty):
                 if not visible:
                     if not feedback_flags["visibility_prompted"]:
                         if pibo_mode == "friendly":
-                            speak_feedback("몸 전체가 화면에 보이도록 서 주세요.")
+                            speak("몸 전체가 화면에 보이도록 서 주세요.")
                         elif pibo_mode == "spartan":
-                            speak_feedback("화면에 신체가 다 보이게 서")
+                            speak("화면에 신체가 다 보이게 서.")
                         feedback_flags["visibility_prompted"] = True
                         feedback_flags["ready_prompted"] = False
-                
-                if visible:
+                else:
                     feedback_flags["visibility_prompted"] = False
+
                     if not feedback_flags["ready_prompted"]:
                         if pibo_mode == "friendly":
-                            speak_feedback("좋아요, 준비됐어요! 데드리프트를 시작하세요.")
+                            speak("좋아요, 준비됐어요! 데드리프트를 시작하세요.")
                         elif pibo_mode == "spartan":
-                            speak_feedback("자 이제 데드리프트 시작!")
+                            speak("자, 이제 데드리프트 시작!")
                         feedback_flags["ready_prompted"] = True
 
                     try:
-                        left_angle = calculate_2d_angle(
-                            [landmarks[23].x, landmarks[23].y],
-                            [landmarks[25].x, landmarks[25].y],
-                            [landmarks[27].x, landmarks[27].y]
-                        )
-                        right_angle = calculate_2d_angle(
-                            [landmarks[24].x, landmarks[24].y],
-                            [landmarks[26].x, landmarks[26].y],
-                            [landmarks[28].x, landmarks[28].y]
-                        )
+                        left_hip = [landmarks[mp_pose_instance.PoseLandmark.LEFT_HIP.value].x, landmarks[mp_pose_instance.PoseLandmark.LEFT_HIP.value].y]
+                        left_knee = [landmarks[mp_pose_instance.PoseLandmark.LEFT_KNEE.value].x, landmarks[mp_pose_instance.PoseLandmark.LEFT_KNEE.value].y]
+                        left_ankle = [landmarks[mp_pose_instance.PoseLandmark.LEFT_ANKLE.value].x, landmarks[mp_pose_instance.PoseLandmark.LEFT_ANKLE.value].y]
+
+                        right_hip = [landmarks[mp_pose_instance.PoseLandmark.RIGHT_HIP.value].x, landmarks[mp_pose_instance.PoseLandmark.RIGHT_HIP.value].y]
+                        right_knee = [landmarks[mp_pose_instance.PoseLandmark.RIGHT_KNEE.value].x, landmarks[mp_pose_instance.PoseLandmark.RIGHT_KNEE.value].y]
+                        right_ankle = [landmarks[mp_pose_instance.PoseLandmark.RIGHT_ANKLE.value].x, landmarks[mp_pose_instance.PoseLandmark.RIGHT_ANKLE.value].y]
+
+                        left_hand_y = landmarks[mp_pose_instance.PoseLandmark.LEFT_WRIST.value].y
+                        right_hand_y = landmarks[mp_pose_instance.PoseLandmark.RIGHT_WRIST.value].y
+                        left_knee_y = landmarks[mp_pose_instance.PoseLandmark.LEFT_KNEE.value].y
+                        right_knee_y = landmarks[mp_pose_instance.PoseLandmark.RIGHT_KNEE.value].y
+
+                        left_angle = calculate_2d_angle(left_hip, left_knee, left_ankle)
+                        right_angle = calculate_2d_angle(right_hip, right_knee, right_ankle)
                         avg_angle = (left_angle + right_angle) / 2
+                        accuracy = max(0, 100 - abs(avg_angle - 90))
+                        last_score = int(accuracy)
 
-                        # 손, 무릎 y 좌표 비교용
-                        left_hand_y = landmarks[15].y
-                        right_hand_y = landmarks[16].y
-                        left_knee_y = landmarks[25].y
-                        right_knee_y = landmarks[26].y
-
-                        # 실시간 표시용 accuracy (중간 자세의 각도 정확도, 180 기준)
-                        accuracy = max(0, 100 - abs(avg_angle - 180))
-
-                        # 업 자세 조건
-                        if stage == "down" and avg_angle >= 130:
-                            if (left_hand_y < left_knee_y) and (right_hand_y < right_knee_y):
-                                stage = "up"
-                                counter += 1
-
-                                # 점수 계산: min_down_angle 기준으로
-                                if min_down_angle is not None:
-                                    down_score = max(0, 100 - abs(min_down_angle - 90))
-                                    last_score = int(down_score)
-                                    score_list.append(last_score)
-                                    total_reps += 1
-                                    total_exp += last_score
-
-                                    if min_down_angle < 75:
-                                        if pibo_mode == "friendly":
-                                            speak_feedback("조금만 덜 앉아 주세요.")
-                                        elif pibo_mode == "spartan":
-                                            speak_feedback("너무 앉았다 조금 덜 앉아봐")
-                                    elif min_down_angle > 95:
-                                        if pibo_mode == "friendly":
-                                            speak_feedback("조금만 더 앉아 주세요.")
-                                        elif pibo_mode == "spartan":
-                                            speak_feedback("그걸로 되겠어? 더 앉아")
-
-                                min_down_angle = None
-                            else:
-                                if pibo_mode == "friendly":
-                                    speak_feedback("손을 무릎 위로 올려주세요.")
-                                elif pibo_mode == "spartan":
-                                    speak_feedback("손이 아직 아래야, 무릎 위로 올려")
-
-                        # 피드백: 격려
-                        if counter >= int(reps_per_set * 0.7) and not feedback_flags["encouraged"]:
-                            if pibo_mode == "friendly":
-                                speak_feedback("좋아요! 거의 다 왔어요 조금만 더 힘내세요!")
-                            elif pibo_mode == "spartan":
-                                speak_feedback("하나 더! 아직 멀었어!")
-                            feedback_flags["encouraged"] = True
-                        
-                        # 세트 완료
-                        if counter >= reps_per_set:
-                            avg_score = int(sum(score_list) / len(score_list))
-                            if pibo_mode == "friendly":
-                                speak_feedback(f"세트 끝! 수고했어요~ 평균 점수는 {avg_score}점입니다.")
-                            elif pibo_mode == "spartan":
-                                speak_feedback(f"세트 완료다. 점수는 {avg_score}점이다. 더 열심히 하도록!")
-                            set_counter += 1
-                            counter = 0
-                            score_list = []
-                            stage = None
-                            feedback_flags["encouraged"] = False
-                        
-                        # 다운 자세 조건
-                        elif avg_angle <= 120:
+                        if avg_angle <= 120:
                             if stage != "down":
-                                if (left_hand_y > left_knee_y) and (right_hand_y > right_knee_y):
-                                    stage = "down"
-                                    min_down_angle = avg_angle
-                                else:
-                                    if pibo_mode == "friendly":
-                                        speak_feedback("손을 무릎 아래로 내려주세요.")
-                                    elif pibo_mode == "spartan":
-                                        speak_feedback("손이 너무 높아, 무릎 아래로 내려")
+                                stage = "down"
+                                min_down_angle = avg_angle
+                                hand_below_knee_valid = False
+                                hand_above_knee_valid = False
                             else:
                                 if avg_angle < min_down_angle:
                                     min_down_angle = avg_angle
+                            
+                            if (left_hand_y > left_knee_y and right_hand_y > right_knee_y):
+                                hand_below_knee_valid = True
+
+
+                        elif stage == "down" and avg_angle >= 160:
+                            if (left_hand_y < left_knee_y and right_hand_y < right_knee_y):
+                                hand_above_knee_valid = True
+
+                            stage = "up"
+                            counter += 1
+                            speak(f"{counter}회")
+                            score_list.append(last_score)
+                            total_reps += 1
+                            total_exp += last_score
+
+                            feedback_given_this_rep = False
+
+                            if min_down_angle is not None:
+                                if min_down_angle < 75:
+                                    if pibo_mode == "friendly":
+                                        speak("조금만 덜 내려가 주세요.")
+                                    else:
+                                        speak("너무 내려갔다. 조금 덜 내려가 봐.")
+                                    feedback_given_this_rep = True
+                                        
+                                elif min_down_angle > 95:
+                                    if pibo_mode == "friendly":
+                                        speak("조금만 더 내려가 주세요.")
+                                    else:
+                                        speak("그걸로 되겠어? 더 내려가.")
+                                    feedback_given_this_rep = True
+                                
+                                if not hand_below_knee_valid:
+                                    if pibo_mode == "friendly":
+                                        speak("내려갈 때 바벨이 무릎 아래로 내려가야 해요")
+                                    else:
+                                        speak("바벨 끝까지 안내려?")
+                                    feedback_given_this_rep = True
+                            
+                                if not hand_above_knee_valid:
+                                    if pibo_mode == "friendly":
+                                        speak("올라올 때 바벨을 무릎 위로 올려야 해요")
+                                    else:
+                                        speak("바벨 끝까지 안올려?")
+                                    feedback_given_this_rep = True
+                                
+                                min_down_angle = None
+                            
+                            if not feedback_given_this_rep:
+                                if pibo_mode == "friendly":
+                                    current_feedback_msg = "아주 좋아요! 완벽한 데드리프트였어요."
+                                elif pibo_mode == "spartan":
+                                    current_feedback_msg = "완벽하다. 다음!"
+                                
+                                if current_feedback_msg != last_feedback:
+                                    speak(current_feedback_msg)
+                                    last_feedback = current_feedback_msg
+                            else:
+                                last_feedback = "specific_feedback_given"
+
+                            hand_below_knee_valid = False
+                            hand_above_knee_valid = False
+
+                            if counter >= int(reps_per_set * 0.7) and not feedback_flags["encouraged"]:
+                                if pibo_mode == "friendly":
+                                    speak("좋아요! 거의 다 왔어요. 조금만 더 힘내세요!")
+                                else:
+                                    speak("하나 더! 아직 멀었어!")
+                                feedback_flags["encouraged"] = True
+
+                            if counter >= reps_per_set:
+                                avg_score = int(sum(score_list) / len(score_list)) if score_list else 0
+                                if pibo_mode == "friendly":
+                                    speak(f"세트 끝! 수고했어요~ 평균 점수는 {avg_score}점이에요.")
+                                else:
+                                    speak(f"세트 완료다. 점수는 {avg_score}점이다. 더 열심히 하도록!")
+                                set_counter += 1
+                                counter = 0
+                                score_list = []
+                                stage = None
+                                feedback_flags["encouraged"] = False
 
                     except Exception as e:
-                        print(e)
+                        print(f"[랜드마크 처리 오류] {e}")
 
-                image = draw_info_overlay(image, counter, set_counter, int(accuracy), visible)
                 mp.solutions.drawing_utils.draw_landmarks(image, results.pose_landmarks, mp_pose_instance.POSE_CONNECTIONS)
+                image = draw_info_overlay(image, counter, set_counter, last_score, visible)
             else:
-                image = draw_info_overlay(image, counter, set_counter, 0, False)
+                image = draw_info_overlay(image, counter, set_counter, last_score, False)
 
             cv2.imshow("Deadlift Tracker", image)
 
             key = cv2.waitKey(10) & 0xFF
-
             if key == ord(' '):
                 counter += 1
                 score_list.append(100)
                 last_score = 100
                 total_reps += 1
                 total_exp += 100
+                speak(f"{counter}회")
 
                 if counter >= reps_per_set:
-                    avg_score = int(sum(score_list) / len(score_list))
-                    if pibo_mode == "friendly":
-                        speak_feedback(f"세트 끝! 수고했어요~ 평균 점수는 {avg_score}점입니다.")
-                    elif pibo_mode == "spartan":
-                        speak_feedback(f"세트 완료다. 점수는 {avg_score}점이다.")
+                    avg_score = int(sum(score_list) / len(score_list)) if score_list else 100
+                    speak(f"세트 완료! 평균 점수는 {avg_score}점입니다.")
                     set_counter += 1
                     counter = 0
                     score_list = []
                     stage = None
                     feedback_flags["encouraged"] = False
 
-            if key == ord('q'):
-                if not exit_pressed_once:
-                    if pibo_mode == "friendly":
-                        speak_feedback("정말 종료하시겠어요? 한세트 더 해보는건 어떨까요?.")
-                    elif pibo_mode == "spartan":
-                        speak_feedback("고작 이걸로 운동 끝내게 다시 원위치해")
-                    exit_pressed_once = True
-                    exit_time = datetime.now()
-                elif (datetime.now() - exit_time).total_seconds() <= 3:
-                    if pibo_mode == "friendly":
-                        speak_feedback("수고하셨습니다! 운동을 종료합니다.")
-                    elif pibo_mode == "spartan":
-                        speak_feedback("운동 끝났다. 가도 좋다.")
-                    if total_reps > 0:
-                        end_time = datetime.now()
-                        update_workout_score(
-                            user_id=user_id,
-                            workout_type="deadlift",
-                            score=total_exp,
-                            reps=total_reps,
-                            start_time=start_time,
-                            end_time=end_time
-                        )
-                    break
+            if stop_exercise or key == ord('q'):
+                end_time = datetime.now()
+                if total_reps > 0:
+                    update_workout_score(user_id=user_id,
+                                         workout_type="deadlift",
+                                         score=total_exp,
+                                         reps=total_reps,
+                                         start_time=start_time,
+                                         end_time=end_time)
+                speak("운동을 종료합니다. 수고하셨습니다!")
+                break
 
-    cap.release()
     cv2.destroyAllWindows()
